@@ -103,27 +103,23 @@ You should see the T4 listed with ~16GB memory and a driver version.
 
 ---
 
-## Step 4 — Upload Your Project
+## Step 4 — Clone the Project onto the VM
 
-**Option A: Upload via the browser SSH terminal** (easiest — no CLI needed)
+In the browser SSH terminal:
 
-1. On your Windows PC, zip the project:
-   - Right-click the `rl_project` folder → **Send to → Compressed (zipped) folder**
-   - You'll get `rl_project.zip`
-2. In the browser SSH terminal, click the **gear icon** (top right of the terminal window) → **Upload file**
-3. Select `rl_project.zip` — it uploads to your home directory (`~`)
-4. In the terminal, unzip it:
 ```bash
 cd ~
-unzip rl_project.zip
+git clone https://github.com/vinoltauro/rl-project.git rl_project
 cd rl_project
 ```
 
-**Option B: Use Git** (if your project is on GitHub/GitLab)
-```bash
-git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git rl_project
-cd rl_project
-```
+That's it — all code and configs are now on the VM.
+
+> **To pull updates later** (if you push fixes from your PC):
+> ```bash
+> cd ~/rl_project
+> git pull
+> ```
 
 ---
 
