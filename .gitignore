@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+env/
+.env
+
+# Training outputs (large files — download separately from VM)
+results/checkpoints/
+results/logs/
+results/representations/
+results/plots/
+
+# Keep the results directory structure but not the files
+!results/.gitkeep
+!results/checkpoints/.gitkeep
+!results/logs/.gitkeep
+!results/representations/.gitkeep
+!results/plots/.gitkeep
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# Device detection file written by setup_env.py
+.device
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

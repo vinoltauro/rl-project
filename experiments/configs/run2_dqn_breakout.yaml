@@ -1,0 +1,21 @@
+# Run 2: DQN on Breakout
+env_id: "ALE/Breakout-v5"
+algorithm: "dqn"
+total_steps: 5_000_000
+seed: 42
+net_scale: "medium"
+buffer_capacity: 100_000
+batch_size: 32
+learning_starts: 10_000
+lr: 0.0001
+grad_clip: 10.0
+gamma: 0.99
+target_update_freq: 1_000
+epsilon_start: 1.0
+epsilon_end: 0.01
+epsilon_decay_steps: 100_000
+log_dir: "results/logs"
+checkpoint_dir: "results/checkpoints"
+checkpoint_freq: 500_000
+print_freq: 10
+tb_logging: true

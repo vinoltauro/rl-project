@@ -1,0 +1,44 @@
+# ─────────────────────────────────────────────────────────────
+# Baseline configuration
+# Used for all 4 core training runs (DQN/DDQN × Pong/Breakout)
+# Hyperparameters from Mnih et al. (2015) with minor adjustments
+# for reduced buffer size (feasibility on consumer hardware)
+# ─────────────────────────────────────────────────────────────
+
+# Environment
+env_id: "ALE/Pong-v5"          # Override per run: ALE/Breakout-v5
+seed: 42
+
+# Algorithm — set to "dqn" or "ddqn"
+algorithm: "dqn"
+
+# Training duration
+total_steps: 2_000_000         # 2M for Pong, 5M for Breakout
+
+# Network
+net_scale: "medium"             # small | medium | large
+
+# Replay buffer
+buffer_capacity: 100_000
+batch_size: 32
+learning_starts: 10_000        # Steps before first gradient update
+
+# Optimiser
+lr: 0.0001                     # 1e-4
+grad_clip: 10.0
+
+# RL
+gamma: 0.99
+target_update_freq: 1_000
+
+# Exploration
+epsilon_start: 1.0
+epsilon_end: 0.01
+epsilon_decay_steps: 100_000
+
+# Logging & checkpointing
+log_dir: "results/logs"
+checkpoint_dir: "results/checkpoints"
+checkpoint_freq: 500_000       # Save every 500k steps
+print_freq: 10                 # Print progress every N episodes
+tb_logging: true
