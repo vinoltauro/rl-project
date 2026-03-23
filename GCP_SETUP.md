@@ -6,6 +6,47 @@ Estimated wall time: **18–25 hours** (all 4 runs sequentially).
 
 ---
 
+## IMPORTANT — Upgrade from Free Trial First
+
+GCP Free Trial **does not allow GPU VMs**. You must upgrade to a paid account before you can add a GPU.
+
+**Upgrading does NOT charge you.** Your $300 free credits remain and are used first. You will only be charged real money once you have spent all $300 — which will not happen for this project (estimated cost ~$4–8).
+
+### How to upgrade:
+1. Go to [console.cloud.google.com](https://console.cloud.google.com)
+2. You should see a banner at the top saying **"You're on a free trial"** → click **Upgrade**
+3. Alternatively: go to **Billing** (left sidebar) → **Upgrade Account**
+4. Enter a payment method (credit/debit card) — it will not be charged unless you exceed $300
+5. Click **Upgrade** — done. Your $300 credits are still active.
+
+After upgrading, continue with the steps below.
+
+---
+
+## IMPORTANT — Set a $50 Spending Alert (Do This Before Creating Any VM)
+
+GCP will not auto-stop your VM if you forget to turn it off. Set up a budget alert so you get an email warning before spending too much.
+
+### How to set a budget alert:
+1. Go to **Billing** (left sidebar) → **Budgets & alerts**
+2. Click **Create budget**
+3. Fill in:
+   - **Name:** `rl-dissertation-limit`
+   - **Time period:** Monthly
+   - **Budget type:** Specified amount → **$50**
+4. Under **Alert thresholds**, set:
+   - 50% → $25 (early warning)
+   - 90% → $45 (serious warning — stop the VM)
+   - 100% → $50 (hard limit reached)
+5. Make sure **Email alerts to billing admins and users** is ticked
+6. Click **Finish**
+
+GCP will email you at each threshold. **It does not automatically stop your VM** — that's your job. If you get the 90% email, SSH in and stop the VM immediately.
+
+> **Reality check:** This project should cost ~$4–8 total. The $50 budget is a very conservative safety net — you'd have to leave the VM running for 3–4 days and forget about it to hit $50. The alert at $25 gives you plenty of time to act.
+
+---
+
 ## Quick Reference
 
 | Run | Algorithm | Game | Steps | ~Time (T4) |
@@ -24,8 +65,8 @@ Estimated wall time: **18–25 hours** (all 4 runs sequentially).
 1. Go to [console.cloud.google.com](https://console.cloud.google.com)
 2. Click the project dropdown (top left) → **New Project**
    - Name: `rl-dissertation` → **Create**
-3. Go to **Billing** (left sidebar) → link your billing account
-   - Your $300 free credits will be used — you will not be charged unless you exceed them
+3. Go to **Billing** (left sidebar) → confirm your upgraded billing account is linked
+   - Your $300 free credits will be consumed first — no real charge until they run out
 
 ### 1b. Request GPU quota
 
@@ -268,6 +309,12 @@ To delete the VM entirely (frees up disk storage cost too — ~$1/month for 50GB
 - Instead of **Stop**, click **Delete** → confirm
 
 > Stopped VMs do not incur compute charges. Only the persistent disk costs continue (~$1/month for 50GB) — negligible.
+
+### Cost checklist — before walking away from your PC:
+- [ ] Training finished (check tmux output)
+- [ ] Results downloaded to your PC (Step 9)
+- [ ] VM stopped in the console (green tick → grey circle next to VM name)
+- [ ] Check **Billing → Overview** to verify no unexpected charges
 
 ---
 
