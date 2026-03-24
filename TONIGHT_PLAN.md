@@ -16,14 +16,15 @@ Current time: ~1:30 AM | Meeting: 10:00 AM | Time available: ~8.5 hours
 ---
 
 ## DO NOT TOUCH the training terminal
-Training is running in tmux window 0. Open a second tmux window for all analysis:
+Training is running in the `training` tmux session. Open a second window inside it:
 ```bash
-Ctrl+B, then C          # opens new window — training keeps running untouched
+tmux attach -t training   # attach to the session
+Ctrl+B, then C            # opens new window — training keeps running untouched
 ```
 Switch between windows anytime:
 ```bash
-Ctrl+B, then 0          # training window
-Ctrl+B, then 1          # analysis window
+Ctrl+B, then 0            # back to training window
+Ctrl+B, then 1            # analysis window
 ```
 
 ---
