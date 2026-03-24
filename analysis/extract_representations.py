@@ -77,16 +77,18 @@ def collect_representations(
 
     with torch.no_grad():
         for _ in range(n_steps):
-            # Select action (near-greedy)
+            # Always run forward pass so the hook populates model.representation
+            state_t = (
+                torch.from_numpy(obs)
+                .float().div(255.0)
+                .unsqueeze(0).to(device)
+            )
+            q_vals = model(state_t)
+
+            # Epsilon-greedy action selection
             if np.random.random() < epsilon_eval:
                 action = env.action_space.sample()
             else:
-                state_t = (
-                    torch.from_numpy(obs)
-                    .float().div(255.0)
-                    .unsqueeze(0).to(device)
-                )
-                q_vals = model(state_t)
                 action = int(q_vals.argmax(dim=1).item())
 
             # The forward hook populates model.representation
