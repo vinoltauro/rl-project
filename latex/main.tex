@@ -41,7 +41,7 @@
 \maketitle
 
 \begin{abstract}
-This study examines how the choice of reinforcement learning algorithm shapes the internal representations that deep neural agents develop when learning to play Atari games. Using a 2$\times$2 factorial design, Deep Q-Networks (DQN) and Double DQN (DDQN) agents were trained on Pong and Breakout, two games that share low-level visual structure while differing substantially in strategic complexity. After training, 512-dimensional activation vectors from each agent's penultimate layer were extracted and analysed using t-SNE, Grad-CAM saliency maps, dead neuron analysis, and cross-game cosine similarity. The results show that game content is the dominant organising principle of the representation space. Within each game, however, DDQN consistently produces more compact and structured representations. DQN exhibits systematic Q-value overestimation and a higher fraction of dead neurons, both consistent with a noisier gradient signal. These findings suggest that algorithm choice matters not just for performance, but for the quality and interpretability of what an agent learns internally.
+This study investigates how structurally similar yet strategically distinct games shape the internal representations of deep reinforcement learning agents, and whether the choice of training algorithm affects what agents learn to represent. Pong and Breakout share fundamental low-level visual structure, including a ball, a paddle, and deflection physics, but differ substantially in high-level strategy. Using a 2$\times$2 factorial design, Deep Q-Networks (DQN) and Double DQN (DDQN) agents were trained on both games and their 512-dimensional penultimate layer activations were analysed using t-SNE, Grad-CAM saliency maps, dead neuron analysis, and cross-game cosine similarity. The results show that despite shared visual structure, game-specific strategic demands drive representational divergence: agents playing different games develop clearly distinct internal encodings. Non-trivial cross-game similarity does persist, reflecting the shared low-level visual features, and this alignment is stronger under DDQN. Within each game, DDQN produces more compact and structured representations, consistent with its cleaner gradient signal reducing representational noise. These findings reveal how the boundary between shared and game-specific representations aligns with the boundary between visual and strategic game features.
 \end{abstract}
 
 \tableofcontents
@@ -51,18 +51,19 @@ This study examines how the choice of reinforcement learning algorithm shapes th
 \section{Introduction}
 % ============================================================
 
-When a deep reinforcement learning agent learns to play Breakout after millions of game steps, what has it actually learned? The score tells us it has improved, but reveals nothing about the internal model the agent has built: what features it responds to, how it organises game states, or whether different training algorithms produce meaningfully different representations of the same environment.
+Pong and Breakout look similar on the surface. Both feature a ball bouncing off a paddle, both share the same deflection physics, and both are rendered in the same pixelated Atari style. Yet anyone who has played both knows they demand completely different things from a player: Pong is about reading and reacting to an opponent, Breakout is about planning a path through a grid of bricks. The question this study asks is whether a deep reinforcement learning agent, trained purely from pixels and reward signals, picks up on that distinction internally, and if so, where the line falls between what is shared and what is game-specific in its learned representations.
 
-This question matters for reasons beyond academic curiosity. As deep RL systems move into higher-stakes domains, understanding what these agents learn internally, rather than just how well they perform, becomes increasingly important for both interpretability and transfer. An agent that has built a clean, structured model of its environment is more likely to generalise than one that has found a noisy shortcut that happens to score well on a training task.
+Understanding the internal representations of deep RL agents matters beyond academic interest. As these systems are applied in more complex and consequential settings, interpretability becomes a practical concern. Knowing whether an agent has built a clean, structured model of its environment, or a noisy approximation that happens to score well, has direct implications for how much we should trust it and how well it will transfer to new tasks.
 
-This study addresses the question through a controlled comparison of DQN \cite{mnih2015human} and Double DQN (DDQN) \cite{van2016deep} across two Atari games: Pong and Breakout. The two algorithms are architecturally identical, sharing the same convolutional network, replay buffer, and hyperparameters. The only difference is three lines of Python governing how the temporal difference (TD) target is computed. This makes the comparison unusually clean: any observed difference in the geometry of the learned representation space must be attributable to the learning rule alone, not to architectural choices.
+This study trains DQN \cite{mnih2015human} and Double DQN (DDQN) \cite{van2016deep} agents on both games and examines the 512-dimensional activations at the penultimate layer of the shared CNN backbone. DQN and DDQN are used not because the algorithm comparison is the primary question, but because having two independent algorithms provides two separate windows into the same representational phenomenon. If a finding holds across both, it is more likely to reflect something genuine about the games rather than an artefact of a particular training procedure.
 
-Pong and Breakout were chosen deliberately. Both involve a ball, a paddle, and deflection physics, giving them shared low-level visual structure. They differ substantially in strategic demands: Pong requires tracking and outmanoeuvring an opponent, while Breakout calls for systematic brick destruction. This contrast lets the study separate the influence of game content on representations from the influence of the training algorithm.
+Pong and Breakout were chosen specifically because they sit at an interesting point on the similarity spectrum: visually similar enough that one might expect substantial representational overlap, yet strategically different enough that divergence would not be surprising. This makes them a useful pair for probing exactly where shared structure ends and game-specific structure begins.
 
-Two research questions guide the work:
+Three questions guide the work:
 \begin{enumerate}
-    \item Do agents trained on structurally similar Atari games develop similar internal representations? To what extent does shared visual structure produce shared representational geometry?
-    \item Does the choice of algorithm, DQN versus DDQN, affect the nature and quality of learned representations, independent of the game being played?
+    \item Do agents trained on Pong and Breakout develop similar internal representations, given the shared low-level visual structure of the two games?
+    \item Where does representational similarity break down, and does this correspond to the boundary between shared visual features and game-specific strategic demands?
+    \item Does the training algorithm, DQN versus DDQN, affect the quality and structure of the learned representations within each game?
 \end{enumerate}
 
 % ============================================================
@@ -359,23 +360,25 @@ Cross-game cosine similarity between mean Pong and Breakout representations is n
 \label{sec:analysis}
 % ============================================================
 
-\subsection{Game Content as the Dominant Organising Principle}
+\subsection{Where Similarity Ends and Game-Specific Structure Begins}
 
-The clearest result from the representation analysis is that game content dominates. Regardless of training algorithm, agents playing the same game develop broadly similar representational geometries, and agents playing different games develop clearly distinct ones. The convolutional layers learn features specific to each game's visual domain: the brick patterns and wall geometry of Breakout, the opponent paddle dynamics of Pong. These features necessarily produce different representation geometries irrespective of how Q-value targets are computed.
+The most important finding from the representation analysis is that shared visual structure does not translate into shared representational geometry. Despite Pong and Breakout having the same ball, paddle, and physics, agents playing different games develop clearly distinct internal encodings. The t-SNE projections show clean separation by game across both algorithms, and the cross-game cosine similarity, while non-trivial, is far from the high alignment one would expect if visual similarity were the dominant factor.
 
-This does not diminish the algorithm effect. DDQN consistently produces more structured representations within each game. Rather, it contextualises the finding: the game determines \textit{what} the agent represents; the algorithm modulates the \textit{quality} of how that content is encoded.
+The explanation lies in what the convolutional layers are actually learning. The shared visual features, ball movement, paddle position, deflection angles, are present in both games, but the strategic context that determines which of those features are \textit{reward-predictive} differs entirely. In Pong, the opponent's paddle position matters enormously. In Breakout, the spatial distribution of remaining bricks is what drives Q-value differences. The representation layer learns to encode what is useful for predicting reward in each game, and because those useful features differ, the representations diverge even when the raw pixels overlap.
 
-\subsection{The Gradient Signal Hypothesis}
+The non-trivial cross-game cosine similarity that does persist, slightly higher under DDQN, reflects the genuine shared visual content. The low-level convolutional features that detect the ball and paddle are the same regardless of game, and these shared early-layer features contribute some alignment to the final representation vectors. This suggests a hierarchy: early convolutional layers generalise across games, while the deeper fully connected representation layer specialises to game-specific strategic demands.
 
-The pattern of DDQN advantages across all measures, including tighter t-SNE clusters, fewer dead neurons, more focused saliency, higher cross-game cosine similarity, and lower final loss on Breakout, is best explained by a single mechanism: cleaner gradients produce more structured representations.
+\subsection{Algorithm as a Modulator of Representation Quality}
 
-DQN's overestimation bias introduces systematic noise into the training signal. Targets are inflated, particularly in states where Q-value estimates are already unreliable, meaning the network is trained on labels that are more erratic than the true action values. Over millions of updates this noise accumulates, degrading the representation layer: more neurons fall into the dead zone, cluster geometry becomes less defined, and Grad-CAM attention patterns become more diffuse.
+DQN and DDQN were included in this study primarily to provide two independent observations of the same representational phenomenon. The fact that both algorithms show the same game-level separation confirms that the finding is not an artefact of one particular training procedure.
 
-DDQN removes this noise source without changing anything else. The representation layer then receives a more consistent signal about which features of the game state are predictive of future reward and organises itself accordingly. The finding that DDQN produces structurally superior representations even when its task performance is nearly identical to DQN (Table~\ref{tab:results}) strengthens this interpretation considerably: performance alone cannot account for the representational differences.
+Within each game, however, DDQN consistently produces higher-quality representations: tighter t-SNE cluster geometry, fewer dead neurons, more focused saliency maps, and higher cross-game cosine similarity. These advantages are best explained by DDQN's cleaner gradient signal. DQN's overestimation bias inflates training targets in states where Q-value estimates are already unreliable, introducing noise that accumulates over millions of updates. DDQN's decoupled target computation removes this noise source, and the representation layer organises itself more consistently as a result.
+
+Critically, these representational differences emerge even though DQN and DDQN achieve near-identical task performance (Table~\ref{tab:results}). This decoupling of performance and representation quality is itself an important finding: reward alone does not reveal whether an agent has built a clean internal model or a noisy one.
 
 \subsection{Implications for Transfer Learning}
 
-If game content dominates representational geometry while the algorithm modulates quality, a natural prediction follows: DDQN representations should transfer better between structurally similar games than DQN representations, both because they are more structured and because they preserve more shared low-level visual features. The higher cross-game cosine similarity under DDQN provides some early evidence for this. Testing it directly by fine-tuning agents pre-trained on Pong to play Breakout and comparing DQN versus DDQN transfer performance would be a natural and tractable extension of this work.
+The hierarchy identified here, shared visual structure in early layers, game-specific strategy in the representation layer, has direct implications for transfer learning. An agent pre-trained on Pong and fine-tuned on Breakout would likely need to substantially reorganise its representation layer, since the strategic demands differ, while its early convolutional features would transfer relatively well. The stronger cross-game cosine similarity under DDQN suggests its representation layer retains slightly more of the shared visual content, which could give it a small advantage in transfer settings. Testing this directly would be a natural extension of this work.
 
 \subsection{Limitations}
 
@@ -394,17 +397,17 @@ Several limitations should be considered when interpreting these results.
 \label{sec:conclusion}
 % ============================================================
 
-This study has provided a controlled, activation-level analysis of how game content and learning algorithm interact to shape the internal representations of deep RL agents. The key findings are:
+This study has provided a controlled analysis of how structurally similar yet strategically distinct games shape the internal representations of deep RL agents, and how the training algorithm modulates the quality of those representations. The key findings are:
 
 \begin{enumerate}
-    \item \textbf{Game content dominates.} t-SNE clusters separate cleanly by game across both algorithms, confirming that what an agent learns about is the primary organiser of its representation space.
-    \item \textbf{DDQN produces more structured representations.} Within each game, DDQN shows tighter t-SNE cluster geometry, fewer dead neurons, more focused saliency maps, and higher cross-game cosine similarity.
-    \item \textbf{DQN overestimates Q-values systematically.} Mean max Q-values are 10 to 40\% higher under DQN than DDQN across both games, replicating the bias described by van Hasselt et al.\ \cite{van2016deep}.
-    \item \textbf{Performance differences do not explain representational differences.} Both algorithms achieve near-identical final task performance, ruling out performance as a confound for the observed representational advantages of DDQN.
-    \item \textbf{Non-trivial cross-game similarity exists.} Shared visual structure produces aligned representational directions across games, with DDQN preserving this alignment more faithfully.
+    \item \textbf{Shared visual structure does not produce shared representations.} Despite Pong and Breakout sharing a ball, paddle, and deflection physics, agents playing different games develop clearly distinct internal encodings. Strategic demands, not visual similarity, drive representational divergence.
+    \item \textbf{Some cross-game similarity persists.} Non-trivial cosine similarity between Pong and Breakout representations reflects genuine shared visual content in the early convolutional layers, suggesting a hierarchy where early layers generalise and the representation layer specialises.
+    \item \textbf{DDQN produces more structured representations within each game.} Tighter t-SNE cluster geometry, fewer dead neurons, more focused saliency, and higher cross-game cosine similarity all point to DDQN's cleaner gradient signal producing more organised internal models.
+    \item \textbf{DQN overestimates Q-values systematically.} Mean max Q-values are 10 to 40\% higher under DQN than DDQN, replicating the bias of van Hasselt et al.\ \cite{van2016deep} under reduced-buffer conditions.
+    \item \textbf{Performance and representation quality are decoupled.} Both algorithms achieve near-identical task performance, confirming that reward alone is an insufficient indicator of whether an agent has built a clean internal model.
 \end{enumerate}
 
-Algorithm choice matters not only for how well an agent performs but for the quality and organisation of what it learns internally. DDQN does not dramatically outscore DQN in this study, but it constructs a more structured and arguably more generalisable internal model of the game world. This has practical implications for agents intended to transfer across tasks, and motivates further investigation into how training dynamics shape representation geometry across a broader range of algorithms and environments.
+The central finding is that the line between shared and game-specific representations in deep RL agents corresponds closely to the line between shared visual features and distinct strategic demands. This has practical implications for transfer learning and for how we evaluate agent interpretability, and motivates further study of representation geometry across a broader range of game types and training algorithms.
 
 % ============================================================
 \newpage
