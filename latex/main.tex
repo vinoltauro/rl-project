@@ -22,9 +22,6 @@
 %% Hyperlinks
 \usepackage[colorlinks=true,allcolors=.,urlcolor=blue]{hyperref}
 
-%% References — Vancouver numbering
-\usepackage[numbers]{natbib}
-
 %% Section heading style
 \renewcommand{\familydefault}{\sfdefault}
 \usepackage{titlesec}
@@ -32,22 +29,19 @@
 
 \hyphenation{op-tical net-works semi-conduc-tor}
 
-% ============================================================
 \begin{document}
-% ============================================================
 
 \title{\textbf{Representation Learning in Deep Reinforcement Learning:}\\
        \large A Comparative Study of DQN and Double DQN on Atari}
-\author{Neil Tauro\\
+\author{Vinol Tauro\\
         \small Student Number: 25340566\\
         \small School of Computer Science and Statistics\\
         \small Trinity College Dublin}
 \date{May 2026}
 \maketitle
 
-% ── Abstract ─────────────────────────────────────────────────────────────
 \begin{abstract}
-This study examines how the choice of reinforcement learning algorithm shapes the internal representations that deep neural agents develop when learning to play Atari games. Using a 2$\times$2 factorial design, Deep Q-Networks (DQN) and Double DQN (DDQN) agents were trained on Pong and Breakout --- two games that share low-level visual structure while differing substantially in strategic complexity. After training, 512-dimensional activation vectors from each agent's penultimate layer were extracted and analysed using t-SNE, Grad-CAM saliency maps, dead neuron analysis, and cross-game cosine similarity. The results show that game content is the dominant organising principle of the representation space. Within each game, however, DDQN consistently produces more compact and structured representations. DQN exhibits systematic Q-value overestimation and a higher fraction of dead neurons, both consistent with a noisier gradient signal. These findings suggest that algorithm choice matters not just for performance, but for the quality and interpretability of what an agent learns internally.
+This study examines how the choice of reinforcement learning algorithm shapes the internal representations that deep neural agents develop when learning to play Atari games. Using a 2$\times$2 factorial design, Deep Q-Networks (DQN) and Double DQN (DDQN) agents were trained on Pong and Breakout, two games that share low-level visual structure while differing substantially in strategic complexity. After training, 512-dimensional activation vectors from each agent's penultimate layer were extracted and analysed using t-SNE, Grad-CAM saliency maps, dead neuron analysis, and cross-game cosine similarity. The results show that game content is the dominant organising principle of the representation space. Within each game, however, DDQN consistently produces more compact and structured representations. DQN exhibits systematic Q-value overestimation and a higher fraction of dead neurons, both consistent with a noisier gradient signal. These findings suggest that algorithm choice matters not just for performance, but for the quality and interpretability of what an agent learns internally.
 \end{abstract}
 
 \tableofcontents
@@ -57,18 +51,18 @@ This study examines how the choice of reinforcement learning algorithm shapes th
 \section{Introduction}
 % ============================================================
 
-When a deep reinforcement learning agent learns to play Breakout after millions of game steps, what has it actually learned? The score tells us it has improved, but reveals nothing about the internal model the agent has built --- what features it responds to, how it organises game states, or whether different training algorithms produce meaningfully different representations of the same environment.
+When a deep reinforcement learning agent learns to play Breakout after millions of game steps, what has it actually learned? The score tells us it has improved, but reveals nothing about the internal model the agent has built: what features it responds to, how it organises game states, or whether different training algorithms produce meaningfully different representations of the same environment.
 
-This question matters for reasons beyond academic curiosity. As deep RL systems move into higher-stakes domains, understanding what these agents learn internally --- not just how well they perform --- becomes important for interpretability and transfer. An agent that has built a clean, structured model of its environment is more likely to generalise than one that has found a noisy shortcut that happens to score well on a training task.
+This question matters for reasons beyond academic curiosity. As deep RL systems move into higher-stakes domains, understanding what these agents learn internally, rather than just how well they perform, becomes increasingly important for both interpretability and transfer. An agent that has built a clean, structured model of its environment is more likely to generalise than one that has found a noisy shortcut that happens to score well on a training task.
 
-This study addresses the question through a controlled comparison of DQN \cite{mnih2015human} and Double DQN (DDQN) \cite{van2016deep} across two Atari games: Pong and Breakout. The two algorithms are architecturally identical --- same convolutional network, same replay buffer, same hyperparameters. The only difference is three lines of Python governing how the temporal difference (TD) target is computed. This makes the comparison unusually clean: any observed difference in the learned representation space must be due to the learning rule alone.
+This study addresses the question through a controlled comparison of DQN \cite{mnih2015human} and Double DQN (DDQN) \cite{van2016deep} across two Atari games: Pong and Breakout. The two algorithms are architecturally identical, sharing the same convolutional network, replay buffer, and hyperparameters. The only difference is three lines of Python governing how the temporal difference (TD) target is computed. This makes the comparison unusually clean: any observed difference in the geometry of the learned representation space must be attributable to the learning rule alone, not to architectural choices.
 
-Pong and Breakout were chosen deliberately. Both involve a ball, a paddle, and deflection physics --- shared low-level visual structure. They differ in strategy: Pong requires tracking and outmanoeuvring an opponent, Breakout calls for systematic brick destruction. This contrast lets the study separate two effects: the influence of game content on representations, and the influence of the training algorithm.
+Pong and Breakout were chosen deliberately. Both involve a ball, a paddle, and deflection physics, giving them shared low-level visual structure. They differ substantially in strategic demands: Pong requires tracking and outmanoeuvring an opponent, while Breakout calls for systematic brick destruction. This contrast lets the study separate the influence of game content on representations from the influence of the training algorithm.
 
 Two research questions guide the work:
 \begin{enumerate}
     \item Do agents trained on structurally similar Atari games develop similar internal representations? To what extent does shared visual structure produce shared representational geometry?
-    \item Does the algorithm --- DQN versus DDQN --- affect the nature and quality of learned representations, independent of the game?
+    \item Does the choice of algorithm, DQN versus DDQN, affect the nature and quality of learned representations, independent of the game being played?
 \end{enumerate}
 
 % ============================================================
@@ -78,41 +72,41 @@ Two research questions guide the work:
 
 \subsection{Deep Q-Networks}
 
-DQN \cite{mnih2015human} approximates the action-value function $Q(s, a)$ --- the expected cumulative reward for taking action $a$ in state $s$ --- using a convolutional neural network. Two mechanisms make this tractable for raw pixel inputs.
+DQN \cite{mnih2015human} approximates the action-value function $Q(s, a)$, the expected cumulative reward for taking action $a$ in state $s$, using a convolutional neural network. Two mechanisms make this tractable for raw pixel inputs.
 
 The first is \textit{experience replay}: transitions $(s, a, r, s')$ are stored in a circular buffer and sampled randomly during training, breaking the temporal correlations between consecutive frames that would otherwise destabilise learning.
 
-The second is a \textit{target network}: a frozen copy of the online network used to compute training targets. Without it, targets shift with every gradient update. The DQN TD target is:
+The second is a \textit{target network}: a periodically frozen copy of the online network used to compute training targets. Without it, targets shift with every gradient update, making training unstable. The DQN TD target is:
 
 \begin{equation}
     y = r + \gamma \cdot \max_{a'} Q(s', a';\, \theta^{-})
 \end{equation}
 
-where $\theta^{-}$ are the target network parameters. Crucially, the same network $\theta^{-}$ both selects the best next action and evaluates its value. Taking the maximum over noisy Q-value estimates produces a systematic upward bias that compounds over training.
+where $\theta^{-}$ are the target network parameters. Critically, the same network $\theta^{-}$ both selects the best next action and evaluates its value. Taking the maximum over noisy Q-value estimates produces a systematic upward bias that compounds over training.
 
 \subsection{Double DQN}
 
-Van Hasselt et al.\ \cite{van2016deep} proposed a simple fix: use the online network to select the action and the target network to evaluate it. The DDQN target is:
+Van Hasselt et al.\ \cite{van2016deep} proposed a straightforward fix: use the online network to select the best next action and the target network to evaluate it. The DDQN target is:
 
 \begin{equation}
     y = r + \gamma \cdot Q\!\left(s',\, \argmax_{a'} Q(s', a';\, \theta);\, \theta^{-}\right)
 \end{equation}
 
-Because the two networks have different error profiles, their errors are unlikely to compound in the same direction, substantially reducing overestimation bias. In this study's codebase, \texttt{DoubleDQNAgent} inherits everything from \texttt{DQNAgent} and overrides only the \texttt{learn()} method. Any representational difference observed between the two agents is attributable solely to this target formulation.
+Because the two networks have different error profiles at any point during training, their errors are unlikely to compound in the same direction, substantially reducing overestimation bias. In this study's codebase, \texttt{DoubleDQNAgent} inherits everything from \texttt{DQNAgent} and overrides only the \texttt{learn()} method. Any representational difference observed between the two agents is attributable solely to this target formulation.
 
 \subsection{Representation Learning and Capacity Loss}
 
 The 512-dimensional activation vector at the penultimate fully connected layer serves as the agent's compressed encoding of the current game state. Zahavy et al.\ \cite{zahavy2016graying} applied t-SNE to DQN representations and showed that semantically similar game states cluster together in the embedding space. This study extends that approach to a controlled multi-algorithm, multi-game comparison.
 
-Lyle et al.\ \cite{lyle2022understanding} demonstrated that deep RL agents frequently lose representational capacity during training: neurons become permanently inactive due to the ReLU dead zone, reducing the effective dimensionality of the representation layer. Noisier gradient signals --- of the kind produced by DQN's overestimation bias --- accelerate this process. This provides a direct theoretical motivation for expecting DDQN to maintain a more active and expressive representation layer.
+Lyle et al.\ \cite{lyle2022understanding} demonstrated that deep RL agents frequently lose representational capacity during training: neurons become permanently inactive due to the ReLU dead zone, reducing the effective dimensionality of the representation layer. Noisier gradient signals, of the kind produced by DQN's overestimation bias, accelerate this process. This provides a direct theoretical motivation for expecting DDQN to maintain a more active and expressive representation layer.
 
 \subsection{t-SNE}
 
-t-SNE \cite{van2008visualizing} reduces high-dimensional data to two dimensions by minimising the KL divergence between Gaussian neighbourhood distributions in the original space and Student-t distributions in the 2D projection. It faithfully represents local clustering, but inter-cluster distances in the projection are not proportional to distances in the original space. For this reason, qualitative cluster structure is interpreted visually from t-SNE plots, while quantitative assessments use the silhouette score and Davies-Bouldin index computed in the original 512-dimensional space.
+t-SNE \cite{van2008visualizing} reduces high-dimensional data to two dimensions by minimising the KL divergence between Gaussian neighbourhood distributions in the original space and Student-t distributions in the 2D projection. It faithfully represents local clustering, though inter-cluster distances in the projection are not proportional to distances in the original high-dimensional space. Qualitative cluster structure is therefore interpreted visually from t-SNE plots, while quantitative assessments use the silhouette score and Davies-Bouldin index computed directly in the 512-dimensional space.
 
 \subsection{Grad-CAM}
 
-Grad-CAM \cite{selvaraju2017grad} produces visual explanations of a network's decisions by backpropagating gradients to the final convolutional layer and weighting feature maps by their importance to the output. Applied to Atari agents, it highlights which regions of the game frame most influence action selection.
+Grad-CAM \cite{selvaraju2017grad} produces visual explanations of a network's decisions by backpropagating gradients to the final convolutional layer and weighting feature maps by their importance to the output. Applied to Atari agents, it highlights which regions of the game frame most influence action selection at any given step.
 
 % ============================================================
 \section{Experimental Design}
@@ -125,35 +119,35 @@ The study uses a fully crossed 2$\times$2 factorial design, crossing algorithm (
 
 \begin{table}[H]
 \centering
-\caption{Factorial design. All four runs use identical hyperparameters and random seed.}
+\caption{Factorial design. All four runs use identical hyperparameters and the same random seed.}
 \label{tab:factorial}
 \begin{tabular}{lcc}
 \toprule
  & \textbf{Pong} & \textbf{Breakout} \\
 \midrule
-\textbf{DQN}  & Run 1 --- 2M steps & Run 2 --- 5M steps \\
-\textbf{DDQN} & Run 3 --- 2M steps & Run 4 --- 5M steps \\
+\textbf{DQN}  & Run 1 (2M steps) & Run 2 (5M steps) \\
+\textbf{DDQN} & Run 3 (2M steps) & Run 4 (5M steps) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Pong converges faster and was trained for 2M steps; Breakout is considerably more complex and required 5M. This structure isolates three comparisons: the game effect (same algorithm, different game), the algorithm effect (same game, different algorithm), and their interaction.
+Pong converges relatively quickly and was trained for 2M steps; Breakout is more complex and required 5M. The design isolates three comparisons: the game effect (same algorithm, different game), the algorithm effect (same game, different algorithm), and their interaction.
 
 \subsection{Preprocessing Pipeline}
 
 Raw 210$\times$160 RGB frames are transformed through the standard DeepMind preprocessing stack \cite{mnih2015human}:
 \begin{itemize}
-    \item \textbf{No-op reset}: 1--30 random no-op actions at the start of each episode, preventing the agent from memorising fixed starting states.
-    \item \textbf{Frame skip}: the same action is repeated for 4 frames, with pixel-wise max-pooling over the last two to handle sprite flickering.
-    \item \textbf{Episodic life}: each life loss is treated as a terminal signal, providing a denser learning signal.
-    \item \textbf{Grayscale and resize}: frames are converted to 84$\times$84 grayscale.
-    \item \textbf{Reward clipping}: rewards are clipped to $\{-1, 0, +1\}$, normalising scale across games.
-    \item \textbf{Frame stacking}: the last 4 frames are stacked along the channel dimension, giving the agent implicit velocity information.
+    \item \textbf{No-op reset:} 1 to 30 random no-op actions at the start of each episode, preventing the agent from memorising fixed starting states.
+    \item \textbf{Frame skip:} the same action is repeated for 4 frames, with pixel-wise max-pooling over the last two to handle sprite flickering.
+    \item \textbf{Episodic life:} each life loss is treated as a terminal signal, providing a denser learning signal.
+    \item \textbf{Grayscale and resize:} frames are converted to 84$\times$84 grayscale.
+    \item \textbf{Reward clipping:} rewards are clipped to $\{-1, 0, +1\}$, normalising scale across games.
+    \item \textbf{Frame stacking:} the last 4 frames are stacked along the channel dimension, providing the agent with implicit velocity information.
 \end{itemize}
 
 \subsection{Network Architecture}
 
-Both agents share the CNN from Mnih et al.\ \cite{mnih2015human}: three convolutional layers (32 filters, 8$\times$8, stride 4; 64 filters, 4$\times$4, stride 2; 64 filters, 3$\times$3, stride 1), followed by a 512-dimensional fully connected representation layer with ReLU activation, and a linear output head producing Q-values for each action. A PyTorch forward hook on the representation layer captures the 512-dim activation after every forward pass without modifying computation. Weights are initialised using orthogonal initialisation \cite{saxe2013exact}, which has been shown to produce more stable early learning than the default Xavier scheme.
+Both agents share the CNN from Mnih et al.\ \cite{mnih2015human}: three convolutional layers (32 filters, 8$\times$8, stride 4; 64 filters, 4$\times$4, stride 2; 64 filters, 3$\times$3, stride 1), followed by a 512-dimensional fully connected representation layer with ReLU activation, and a linear output head producing Q-values for each action. A PyTorch forward hook on the representation layer captures the 512-dim activation after every forward pass without modifying the computation. Weights are initialised using orthogonal initialisation \cite{saxe2013exact}, which produces more stable early learning than the default Xavier scheme.
 
 \subsection{Hyperparameters}
 
@@ -165,26 +159,26 @@ Both agents share the CNN from Mnih et al.\ \cite{mnih2015human}: three convolut
 \toprule
 \textbf{Parameter} & \textbf{Value} \\
 \midrule
-Learning rate      & $1 \times 10^{-4}$ (Adam) \\
-Replay buffer      & 100,000 transitions \\
-Batch size         & 32 \\
+Learning rate            & $1 \times 10^{-4}$ (Adam) \\
+Replay buffer            & 100,000 transitions \\
+Batch size               & 32 \\
 Discount factor $\gamma$ & 0.99 \\
-Target update frequency & 1,000 steps (hard copy) \\
-Epsilon schedule   & $1.0 \to 0.01$ over 100,000 steps \\
-Gradient clipping  & $L_2$ norm $\leq 10.0$ \\
-Frame skip / stack & 4 / 4 \\
-Input resolution   & 84$\times$84 grayscale \\
-Checkpoint frequency & Every 500,000 steps \\
-Random seed        & 42 \\
+Target update frequency  & 1,000 steps (hard copy) \\
+Epsilon schedule         & $1.0 \to 0.01$ over 100,000 steps \\
+Gradient clipping        & $L_2$ norm $\leq 10.0$ \\
+Frame skip / stack       & 4 / 4 \\
+Input resolution         & 84$\times$84 grayscale \\
+Checkpoint frequency     & Every 500,000 steps \\
+Random seed              & 42 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-The replay buffer of 100,000 transitions is smaller than the 1M used in the original DQN paper, a practical concession to memory constraints. All four runs use an identical buffer size, so the reduction affects both algorithms equally and does not confound the comparison.
+The replay buffer of 100,000 transitions is smaller than the 1M used in the original DQN paper, a practical concession to memory constraints. All four runs use an identical buffer size, so the reduction does not confound the algorithm comparison.
 
 \subsection{Representation Extraction}
 
-After training, each checkpoint is loaded and the agent runs in near-greedy mode ($\varepsilon = 0.05$) for 5,000 steps. At each step the 512-dim representation vector, the action taken, and the cumulative episode reward are recorded. This produces one \texttt{.npz} file per checkpoint, capturing the full developmental trajectory of the representation space across training.
+After training, each checkpoint is loaded and the agent runs in near-greedy mode ($\varepsilon = 0.05$) for 5,000 steps. At each step the 512-dim representation vector, action taken, and cumulative episode reward are recorded, producing one \texttt{.npz} file per checkpoint and capturing the full developmental trajectory of the representation space across training.
 
 % ============================================================
 \section{Results}
@@ -197,44 +191,44 @@ All four agents were trained to completion. Table~\ref{tab:results} summarises t
 
 \begin{table}[H]
 \centering
-\caption{Training results for all four agents. Reward statistics are computed over the final 50 episodes. Q-values are the mean of the maximum Q-value per step over the same window.}
+\caption{Training results for all four agents. Reward statistics are computed over the final 50 episodes. Peak Q is the maximum mean Q-value recorded across the full training run.}
 \label{tab:results}
 \begin{tabularx}{\linewidth}{lXXXX}
 \toprule
 \textbf{Agent} & \textbf{Episodes} & \textbf{Final Reward} & \textbf{Final Q} & \textbf{Peak Q} \\
 \midrule
-DQN / Pong     & 2,444 & $4.88 \pm 6.27$ & 2.56 & 2.86 \\
-DDQN / Pong    & 2,231 & $4.78 \pm 6.00$ & 1.83 & 2.09 \\
-DQN / Breakout & 150,700 & $3.84 \pm 5.74$ & 4.28 & 4.94 \\
+DQN / Pong      & 2,444   & $4.88 \pm 6.27$ & 2.56 & 2.86 \\
+DDQN / Pong     & 2,231   & $4.78 \pm 6.00$ & 1.83 & 2.09 \\
+DQN / Breakout  & 150,700 & $3.84 \pm 5.74$ & 4.28 & 4.94 \\
 DDQN / Breakout & 150,960 & $2.92 \pm 4.34$ & 3.88 & 4.54 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-On Pong, both algorithms converge to similar final reward: DQN reaches $4.88 \pm 6.27$ and DDQN $4.78 \pm 6.00$, with individual episodes reaching 17 and 18 respectively. The learning trajectories follow the expected pattern --- agents begin at $-21$ (losing every point), cross into positive reward around 1M steps, and stabilise in late training. On Breakout, performance is again comparable between algorithms, with DQN reaching $3.84 \pm 5.74$ and DDQN $2.92 \pm 4.34$ over 5M steps.
+On Pong, both algorithms reach similar final reward: DQN achieves $4.88 \pm 6.27$ and DDQN $4.78 \pm 6.00$, with individual episodes reaching scores of 17 and 18 respectively. The learning trajectory follows the expected pattern, starting at $-21$ (losing every point), crossing into positive reward around 1M steps, and stabilising through late training. On Breakout, DQN reaches $3.84 \pm 5.74$ and DDQN $2.92 \pm 4.34$ over 5M steps.
 
-The near-identical performance between DQN and DDQN is itself a meaningful finding. It means that any representational differences observed in subsequent analysis cannot be explained by differences in task performance --- the two algorithms have learned to play equally well, but may have done so through different internal representations.
+The near-identical task performance between DQN and DDQN is itself meaningful. Any representational differences observed in subsequent analysis cannot be attributed to differences in task performance. Both algorithms learned to play at the same level, yet as the following sections show, they did so through representations of noticeably different quality.
 
 \begin{figure}[H]
     \centering
     \begin{subfigure}[b]{0.48\linewidth}
         \includegraphics[width=\linewidth]{figures/training_curves_pong.png}
-        \caption{Pong --- DQN vs DDQN (20-episode rolling average).}
+        \caption{Pong (20-episode rolling average).}
     \end{subfigure}
     \hfill
     \begin{subfigure}[b]{0.48\linewidth}
         \includegraphics[width=\linewidth]{figures/training_curves_breakout.png}
-        \caption{Breakout --- DQN vs DDQN (20-episode rolling average).}
+        \caption{Breakout (20-episode rolling average).}
     \end{subfigure}
-    \caption{Training curves for all four agents. Both algorithms reach similar final reward on both games.}
+    \caption{Training curves for all four agents. Both algorithms reach comparable final reward on both games.}
     \label{fig:training_curves}
 \end{figure}
 
 \subsection{Q-Value Overestimation}
 
-The mean maximum Q-value diverges clearly between DQN and DDQN over training (Figure~\ref{fig:qvalue}). On Pong, DQN Q-values drift from an early range up to a peak of 2.86 before settling at 2.56, while DDQN values rise more modestly to a peak of 2.09 and stabilise at 1.83 --- a 40\% difference in final mean Q-value. On Breakout the gap is smaller (4.28 versus 3.88, approximately 10\%), likely because the greater complexity of Breakout generates more varied learning signal that partially masks the overestimation effect.
+The mean maximum Q-value diverges clearly between DQN and DDQN over training (Figure~\ref{fig:qvalue}). On Pong, DQN Q-values peak at 2.86 and settle at 2.56, while DDQN peaks at 2.09 and settles at 1.83, a 40\% difference in final mean Q-value. On Breakout the gap is smaller: DQN reaches a final Q of 4.28 versus 3.88 for DDQN, approximately 10\%. The narrower gap on Breakout likely reflects the game's greater complexity generating a more varied learning signal that partially absorbs the overestimation effect.
 
-This replicates the core empirical finding of van Hasselt et al.\ \cite{van2016deep}: DQN's target formulation leads to systematic Q-value inflation, while DDQN's decoupled selection and evaluation substantially reduces it. The lower final loss for DDQN on Breakout (0.079 versus 0.109) is consistent with a cleaner, more stable gradient signal.
+The lower final loss for DDQN on Breakout (0.079 versus 0.109 for DQN) is consistent with a cleaner, more stable training signal, and replicates the core finding of van Hasselt et al.\ \cite{van2016deep} under the reduced-buffer conditions used here.
 
 \begin{figure}[H]
     \centering
@@ -247,20 +241,18 @@ This replicates the core empirical finding of van Hasselt et al.\ \cite{van2016d
 
 \subsubsection{Game Effect}
 
-The most prominent structural feature of the t-SNE embeddings is separation by game. When DQN/Pong and DQN/Breakout representations are projected together, two distinct clusters emerge corresponding to each game (Figure~\ref{fig:game_effect_dqn}). The same separation appears for DDQN (Figure~\ref{fig:game_effect_ddqn}). Regardless of which algorithm trained the agent, the game it played is the primary organising principle of its representation space.
+The most prominent structural feature of the t-SNE embeddings is separation by game. When DQN/Pong and DQN/Breakout representations are projected together, two distinct clusters emerge corresponding to each game (Figure~\ref{fig:game_effect}). The same separation appears for DDQN. Regardless of which algorithm trained the agent, the game it played is the primary organising principle of its representation space.
 
 \begin{figure}[H]
     \centering
     \begin{subfigure}[b]{0.48\linewidth}
         \includegraphics[width=\linewidth]{figures/tsne_game_effect_dqn.png}
         \caption{DQN: Pong (blue) vs Breakout (orange).}
-        \label{fig:game_effect_dqn}
     \end{subfigure}
     \hfill
     \begin{subfigure}[b]{0.48\linewidth}
         \includegraphics[width=\linewidth]{figures/tsne_game_effect_ddqn.png}
         \caption{DDQN: Pong vs Breakout.}
-        \label{fig:game_effect_ddqn}
     \end{subfigure}
     \caption{Game effect: representations separate cleanly by game regardless of algorithm.}
     \label{fig:game_effect}
@@ -268,20 +260,18 @@ The most prominent structural feature of the t-SNE embeddings is separation by g
 
 \subsubsection{Algorithm Effect}
 
-Within each game, the algorithm produces observable differences. On Pong, DQN and DDQN representations overlap in t-SNE space but DDQN shows noticeably tighter cluster geometry --- lower intra-cluster variance --- consistent with a cleaner gradient signal producing more organised internal representations (Figure~\ref{fig:algo_effect_pong}). The same pattern appears on Breakout (Figure~\ref{fig:algo_effect_breakout}), though less pronounced, suggesting the algorithm effect is partially absorbed by the greater environmental complexity of the game.
+Within each game, the algorithm produces observable differences. On Pong, DQN and DDQN representations overlap in t-SNE space but DDQN shows noticeably tighter cluster geometry with lower intra-cluster variance, consistent with a cleaner gradient signal producing more organised internal representations (Figure~\ref{fig:algo_effect}). The same pattern appears on Breakout, though less pronounced, suggesting the algorithm effect is partially absorbed by the greater environmental complexity of that game.
 
 \begin{figure}[H]
     \centering
     \begin{subfigure}[b]{0.48\linewidth}
         \includegraphics[width=\linewidth]{figures/tsne_algo_effect_pong.png}
         \caption{Algorithm effect on Pong.}
-        \label{fig:algo_effect_pong}
     \end{subfigure}
     \hfill
     \begin{subfigure}[b]{0.48\linewidth}
         \includegraphics[width=\linewidth]{figures/tsne_algo_effect_breakout.png}
         \caption{Algorithm effect on Breakout.}
-        \label{fig:algo_effect_breakout}
     \end{subfigure}
     \caption{Algorithm effect: DDQN produces tighter cluster geometry within each game.}
     \label{fig:algo_effect}
@@ -296,31 +286,31 @@ The joint projection of all four agents (Figure~\ref{fig:all_agents}) makes the 
     \label{fig:all_agents}
 \end{figure}
 
-Representations coloured by cumulative episode reward (Figure~\ref{fig:reward}) show a partial spatial correspondence between t-SNE position and value, more consistently under DDQN. This suggests DDQN representations encode some value-relevant information beyond purely perceptual features.
+Representations coloured by cumulative episode reward (Figure~\ref{fig:reward}) show a partial spatial correspondence between t-SNE position and value, more consistently under DDQN, suggesting DDQN representations encode some value-relevant structure beyond purely perceptual features.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.65\linewidth]{figures/tsne_by_reward.png}
-    \caption{t-SNE coloured by cumulative reward. High-reward states (green) and low-reward states (red) show spatial correspondence in the embedding, stronger under DDQN.}
+    \caption{t-SNE coloured by cumulative reward. High-reward states (green) and low-reward states (red) show spatial correspondence in the embedding, more consistently under DDQN.}
     \label{fig:reward}
 \end{figure}
 
 \subsubsection{Temporal Evolution}
 
-Figure~\ref{fig:temporal} shows how the representation space evolves across training checkpoints. Early representations form a diffuse, unstructured cloud. Clusters emerge and tighten as training progresses, with DDQN showing earlier emergence of clear structure --- consistent with faster convergence of the gradient signal.
+Figure~\ref{fig:temporal} shows how the representation space evolves across training checkpoints. Early representations form a diffuse, unstructured cloud. Clusters emerge and tighten as training progresses, with DDQN showing earlier emergence of clear structure, consistent with faster convergence of the gradient signal.
 
 \begin{figure}[H]
     \centering
     \begin{subfigure}[b]{0.48\linewidth}
         \includegraphics[width=\linewidth]{figures/tsne_temporal_dqn_pong.png}
-        \caption{DQN / Pong: representations at 500k step intervals.}
+        \caption{DQN / Pong: representations at 500k-step intervals.}
     \end{subfigure}
     \hfill
     \begin{subfigure}[b]{0.48\linewidth}
         \includegraphics[width=\linewidth]{figures/tsne_temporal_ddqn_breakout.png}
-        \caption{DDQN / Breakout: representations at 500k step intervals.}
+        \caption{DDQN / Breakout: representations at 500k-step intervals.}
     \end{subfigure}
-    \caption{Temporal evolution of the representation space. Representations start diffuse and tighten over training. DDQN shows earlier emergence of cluster structure.}
+    \caption{Temporal evolution of the representation space. Representations start diffuse and tighten progressively over training.}
     \label{fig:temporal}
 \end{figure}
 
@@ -328,7 +318,7 @@ Figure~\ref{fig:temporal} shows how the representation space evolves across trai
 
 Grad-CAM saliency maps computed over final checkpoints reveal consistent attention patterns across all four agents: the ball position attracts the highest saliency, with secondary attention on the agent's own paddle. Both algorithms have correctly identified the task-relevant objects.
 
-The key difference is in concentration. DQN saliency maps show more diffuse activation spread across wider screen regions. DDQN maps show tighter, more localised activation centred on the ball and paddle. On Breakout specifically, DDQN shows greater attention to bricks in the ball's immediate trajectory, suggesting a more forward-looking attentional strategy (Figures~\ref{fig:saliency_pong} and~\ref{fig:saliency_breakout}).
+The key difference lies in concentration. DQN saliency maps show more diffuse activation spread across wider screen regions. DDQN maps show tighter, more localised activation centred on the ball and paddle. On Breakout specifically, DDQN shows greater attention to bricks in the ball's immediate trajectory, indicating a more forward-looking attentional strategy (Figures~\ref{fig:saliency_pong} and~\ref{fig:saliency_breakout}).
 
 \begin{figure}[H]
     \centering
@@ -340,13 +330,13 @@ The key difference is in concentration. DQN saliency maps show more diffuse acti
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.7\linewidth]{figures/saliency_breakout.png}
-    \caption{Grad-CAM saliency maps on Breakout. DDQN shows more focused attention on the ball and bricks in its path.}
+    \caption{Grad-CAM saliency maps on Breakout. DDQN shows more focused attention on the ball and the bricks directly in its path.}
     \label{fig:saliency_breakout}
 \end{figure}
 
 \subsection{Dead Neurons and Cosine Similarity}
 
-The fraction of chronically inactive neurons --- those firing in fewer than 5\% of game states --- is consistently higher for DQN than DDQN across both games (Figure~\ref{fig:dead_neurons}). DQN's noisier gradient signal drives more neurons into the ReLU dead zone, reducing the effective dimensionality of the representation layer. DDQN's more consistent updates keep a larger fraction of neurons active, making fuller use of the available 512 dimensions. This is consistent with the capacity loss findings of Lyle et al.\ \cite{lyle2022understanding}.
+The fraction of chronically inactive neurons, those firing in fewer than 5\% of game states, is consistently higher for DQN than DDQN across both games (Figure~\ref{fig:dead_neurons}). DQN's noisier gradient signal drives more neurons into the ReLU dead zone, from which gradient-based recovery is impossible, reducing the effective dimensionality of the representation layer. DDQN's more stable updates keep a larger fraction of neurons active, making fuller use of the available 512 dimensions. This is consistent with the capacity loss findings of Lyle et al.\ \cite{lyle2022understanding}.
 
 \begin{figure}[H]
     \centering
@@ -355,12 +345,12 @@ The fraction of chronically inactive neurons --- those firing in fewer than 5\% 
     \label{fig:dead_neurons}
 \end{figure}
 
-Cross-game cosine similarity between mean Pong and Breakout representations is non-trivial for both algorithms, consistent with the shared ball-and-paddle visual structure producing aligned representational directions. DDQN shows marginally higher cross-game similarity, suggesting its representations preserve more of the shared low-level visual structure rather than being perturbed by overestimation-induced gradient noise (Figure~\ref{fig:cosine}).
+Cross-game cosine similarity between mean Pong and Breakout representations is non-trivial for both algorithms, consistent with the shared ball-and-paddle visual structure producing aligned representational directions (Figure~\ref{fig:cosine}). DDQN shows marginally higher cross-game similarity, suggesting its representations preserve more of the shared low-level visual structure rather than being perturbed by overestimation-driven gradient noise.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.7\linewidth]{figures/cosine_similarity.png}
-    \caption{Cross-game cosine similarity between mean Pong and Breakout representations. Non-trivial similarity reflects shared visual structure; DDQN shows higher alignment.}
+    \caption{Cross-game cosine similarity between mean Pong and Breakout representations. DDQN shows higher alignment, consistent with less noise in its learned features.}
     \label{fig:cosine}
 \end{figure}
 
@@ -371,33 +361,33 @@ Cross-game cosine similarity between mean Pong and Breakout representations is n
 
 \subsection{Game Content as the Dominant Organising Principle}
 
-The clearest finding from the representation analysis is that game content dominates. Regardless of training algorithm, agents playing the same game develop broadly similar representational geometries, and agents playing different games develop clearly distinct ones. This makes intuitive sense: the convolutional layers learn features specific to the game's visual domain --- the brick patterns and wall geometry of Breakout, the opponent paddle dynamics of Pong --- and these features necessarily produce different representation geometries irrespective of how Q-value targets are computed.
+The clearest result from the representation analysis is that game content dominates. Regardless of training algorithm, agents playing the same game develop broadly similar representational geometries, and agents playing different games develop clearly distinct ones. The convolutional layers learn features specific to each game's visual domain: the brick patterns and wall geometry of Breakout, the opponent paddle dynamics of Pong. These features necessarily produce different representation geometries irrespective of how Q-value targets are computed.
 
-What this finding does not do is diminish the algorithm effect. DDQN consistently produces more structured representations within each game. Rather, it contextualises it: the game determines \textit{what} the agent represents; the algorithm modulates the \textit{quality} of how that content is encoded.
+This does not diminish the algorithm effect. DDQN consistently produces more structured representations within each game. Rather, it contextualises the finding: the game determines \textit{what} the agent represents; the algorithm modulates the \textit{quality} of how that content is encoded.
 
 \subsection{The Gradient Signal Hypothesis}
 
-The pattern of DDQN advantages --- tighter t-SNE clusters, fewer dead neurons, more focused saliency, higher cross-game cosine similarity, lower final loss on Breakout --- is best understood through a single explanatory mechanism: cleaner gradients produce more structured representations.
+The pattern of DDQN advantages across all measures, including tighter t-SNE clusters, fewer dead neurons, more focused saliency, higher cross-game cosine similarity, and lower final loss on Breakout, is best explained by a single mechanism: cleaner gradients produce more structured representations.
 
-DQN's overestimation bias introduces systematic noise into the training signal. Targets are inflated, particularly in states where Q-value estimates are already unreliable, meaning the network is being trained on labels that are more erratic than the true action values. Over millions of updates, this noise accumulates and degrades the representation layer: more neurons fall into the dead zone, cluster geometry becomes less defined, and the attention patterns measured by Grad-CAM become more diffuse.
+DQN's overestimation bias introduces systematic noise into the training signal. Targets are inflated, particularly in states where Q-value estimates are already unreliable, meaning the network is trained on labels that are more erratic than the true action values. Over millions of updates this noise accumulates, degrading the representation layer: more neurons fall into the dead zone, cluster geometry becomes less defined, and Grad-CAM attention patterns become more diffuse.
 
-DDQN removes this noise source without changing anything else. The representation layer then receives a more consistent signal about which features of the game state are predictive of future reward, and organises itself accordingly. The finding that DDQN produces structurally superior representations even when its task performance is nearly identical to DQN (Table~\ref{tab:results}) strengthens this interpretation considerably: performance alone cannot explain the representational differences.
+DDQN removes this noise source without changing anything else. The representation layer then receives a more consistent signal about which features of the game state are predictive of future reward and organises itself accordingly. The finding that DDQN produces structurally superior representations even when its task performance is nearly identical to DQN (Table~\ref{tab:results}) strengthens this interpretation considerably: performance alone cannot account for the representational differences.
 
 \subsection{Implications for Transfer Learning}
 
-If game content dominates representational geometry while algorithm modulates quality, a natural prediction follows: DDQN representations should transfer better between structurally similar games than DQN representations. The higher cross-game cosine similarity under DDQN (Figure~\ref{fig:cosine}) provides some early evidence for this. Testing it directly --- fine-tuning agents pre-trained on Pong to play Breakout and comparing DQN versus DDQN transfer performance --- would be a natural and tractable extension of this work.
+If game content dominates representational geometry while the algorithm modulates quality, a natural prediction follows: DDQN representations should transfer better between structurally similar games than DQN representations, both because they are more structured and because they preserve more shared low-level visual features. The higher cross-game cosine similarity under DDQN provides some early evidence for this. Testing it directly by fine-tuning agents pre-trained on Pong to play Breakout and comparing DQN versus DDQN transfer performance would be a natural and tractable extension of this work.
 
 \subsection{Limitations}
 
 Several limitations should be considered when interpreting these results.
 
-\textbf{Single random seed.} All experiments were run with seed 42. Deep RL results can be sensitive to initialisation, and running multiple seeds (typically 3--5 in the literature \cite{henderson2018deep}) would be needed to confirm that the observed representational differences are robust rather than specific to this particular initialisation. This is the most significant limitation of the study.
+\textbf{Single random seed.} All experiments were run with seed 42. Deep RL results can be sensitive to initialisation, and running multiple seeds, typically three to five in the literature \cite{henderson2018deep}, would be needed to confirm that the observed representational differences are robust rather than specific to this initialisation. This is the most significant methodological limitation of the study.
 
-\textbf{Reduced replay buffer.} The buffer capacity of 100,000 transitions is one-tenth of the 1M used in the original DQN paper \cite{mnih2015human}, a practical concession to memory constraints on the available hardware. Both algorithms trained with the same reduced buffer, so the reduction does not confound the algorithm comparison, but some representational differences might be more pronounced under the original conditions.
+\textbf{Reduced replay buffer.} The buffer capacity of 100,000 transitions is one-tenth of the 1M used in the original DQN paper \cite{mnih2015human}, a practical concession to memory constraints. Both algorithms trained with the same reduced buffer, so the reduction does not confound the algorithm comparison, but some effects might be more pronounced under the original conditions.
 
-\textbf{Two games.} The study covers Pong and Breakout. These were chosen for their structural similarity, which is appropriate for the game-versus-algorithm comparison, but replication across a broader and more diverse set of game pairs would strengthen confidence in the generalisability of the findings.
+\textbf{Two games.} The study covers only Pong and Breakout. These were chosen for their structural similarity, which suits the research questions, but replication across a broader set of game pairs would strengthen confidence in the generalisability of the findings.
 
-\textbf{Qualitative t-SNE assessment.} Cluster compactness in the t-SNE plots is assessed visually. Future work should complement this with quantitative measures such as the Davies-Bouldin index or silhouette score computed in the original 512-dimensional space, which would give a more rigorous basis for the compactness claims.
+\textbf{Qualitative t-SNE assessment.} Cluster compactness in the t-SNE plots is assessed visually. Future work should complement this with quantitative measures such as the silhouette score or Davies-Bouldin index computed in the original 512-dimensional space, providing a more rigorous basis for the compactness claims.
 
 % ============================================================
 \section{Conclusion}
@@ -409,38 +399,86 @@ This study has provided a controlled, activation-level analysis of how game cont
 \begin{enumerate}
     \item \textbf{Game content dominates.} t-SNE clusters separate cleanly by game across both algorithms, confirming that what an agent learns about is the primary organiser of its representation space.
     \item \textbf{DDQN produces more structured representations.} Within each game, DDQN shows tighter t-SNE cluster geometry, fewer dead neurons, more focused saliency maps, and higher cross-game cosine similarity.
-    \item \textbf{DQN overestimates Q-values systematically.} Mean max Q-values drift upward throughout DQN training and are 10--40\% higher than DDQN across both games, replicating the bias described by van Hasselt et al.\ \cite{van2016deep}.
+    \item \textbf{DQN overestimates Q-values systematically.} Mean max Q-values are 10 to 40\% higher under DQN than DDQN across both games, replicating the bias described by van Hasselt et al.\ \cite{van2016deep}.
     \item \textbf{Performance differences do not explain representational differences.} Both algorithms achieve near-identical final task performance, ruling out performance as a confound for the observed representational advantages of DDQN.
     \item \textbf{Non-trivial cross-game similarity exists.} Shared visual structure produces aligned representational directions across games, with DDQN preserving this alignment more faithfully.
 \end{enumerate}
 
-Taken together, these findings argue that algorithm choice matters not only for how well an agent performs, but for the quality and organisation of what it learns internally. DDQN does not merely score higher --- in this study it barely does --- but it constructs a more interpretable and arguably more generalisable internal model of the game world. This has practical implications for the design of agents intended to transfer across tasks, and motivates further study of how training dynamics shape representation geometry across a broader range of algorithms and environments.
+Algorithm choice matters not only for how well an agent performs but for the quality and organisation of what it learns internally. DDQN does not dramatically outscore DQN in this study, but it constructs a more structured and arguably more generalisable internal model of the game world. This has practical implications for agents intended to transfer across tasks, and motivates further investigation into how training dynamics shape representation geometry across a broader range of algorithms and environments.
 
-% ============================================================
-% Acknowledgements
 % ============================================================
 \section*{Acknowledgements}
 \addcontentsline{toc}{section}{Acknowledgements}
+% ============================================================
 
 The experiments in this study were conducted on Google Cloud Platform using NVIDIA Tesla T4 GPU instances. Training the four main runs totalled approximately 22 hours of GPU compute time.
 
 % ============================================================
-% References
-% ============================================================
-\bibliographystyle{unsrtnat}
-\bibliography{B_bibs/bibliography}
-\addcontentsline{toc}{section}{Bibliography}
+\newpage
+\begin{thebibliography}{99}
+\addcontentsline{toc}{section}{References}
 
-% ============================================================
-% Declaration
+\bibitem{mnih2015human}
+Mnih V, Kavukcuoglu K, Silver D, Rusu AA, Veness J, Bellemare MG, et al.
+Human-level control through deep reinforcement learning.
+\textit{Nature}. 2015;518(7540):529--533.
+
+\bibitem{van2016deep}
+Van Hasselt H, Guez A, Silver D.
+Deep reinforcement learning with double Q-learning.
+In: \textit{Proceedings of the AAAI Conference on Artificial Intelligence}; 2016. vol.~30.
+
+\bibitem{zahavy2016graying}
+Zahavy T, Ben-Zrihem N, Mannor S.
+Graying the black box: Understanding DQNs.
+In: \textit{Proceedings of the 33rd International Conference on Machine Learning}; 2016. p.~1899--1908.
+
+\bibitem{van2008visualizing}
+Van der Maaten L, Hinton G.
+Visualizing data using t-SNE.
+\textit{Journal of Machine Learning Research}. 2008;9(86):2579--2605.
+
+\bibitem{bellemare2013arcade}
+Bellemare MG, Naddaf Y, Veness J, Bowling M.
+The Arcade Learning Environment: An evaluation platform for general agents.
+\textit{Journal of Artificial Intelligence Research}. 2013;47:253--279.
+
+\bibitem{selvaraju2017grad}
+Selvaraju RR, Cogswell M, Das A, Vedantam R, Parikh D, Batra D.
+Grad-CAM: Visual explanations from deep networks via gradient-based localization.
+In: \textit{Proceedings of the IEEE International Conference on Computer Vision}; 2017. p.~618--626.
+
+\bibitem{sutton2018reinforcement}
+Sutton RS, Barto AG.
+\textit{Reinforcement Learning: An Introduction}. 2nd~ed.
+Cambridge, MA: MIT Press; 2018.
+
+\bibitem{lyle2022understanding}
+Lyle C, Rowland M, Dabney W.
+Understanding and preventing capacity loss in reinforcement learning.
+In: \textit{International Conference on Learning Representations}; 2022.
+
+\bibitem{henderson2018deep}
+Henderson P, Islam R, Bachman P, Pineau J, Precup D, Meger D.
+Deep reinforcement learning that matters.
+In: \textit{Proceedings of the AAAI Conference on Artificial Intelligence}; 2018. vol.~32.
+
+\bibitem{saxe2013exact}
+Saxe AM, McClelland JL, Ganguli S.
+Exact solutions to the nonlinear dynamics of learning in deep linear neural networks.
+In: \textit{International Conference on Learning Representations}; 2014.
+
+\end{thebibliography}
+
 % ============================================================
 \newpage
 \section*{Declaration}
 \addcontentsline{toc}{section}{Declaration}
+% ============================================================
 
-I declare that this report is my own work, submitted in partial fulfilment of the requirements for the Masters degree at the School of Computer Science and Statistics, Trinity College Dublin. All sources have been acknowledged in the bibliography.
+I declare that this report is my own work, submitted in partial fulfilment of the requirements for the Masters degree at the School of Computer Science and Statistics, Trinity College Dublin. All sources have been acknowledged in the references section.
 
 \vspace{2cm}
-\noindent Neil Tauro \hfill May 2026
+\noindent Vinol Tauro \hfill May 2026
 
 \end{document}
