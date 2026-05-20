@@ -1,0 +1,18 @@
+\section{Introduction}
+
+When a deep reinforcement learning agent learns to play Breakout after millions of game steps, what has it actually learned? The score tells us it has gotten better at the game, but it reveals nothing about the internal model the agent has built --- what features it responds to, how it organises game states, or whether different algorithms produce meaningfully different internal representations of the same environment.
+
+This question matters for reasons beyond academic curiosity. As deep RL systems are deployed in higher-stakes domains, understanding what these agents learn internally --- not just how well they perform --- becomes increasingly important for both interpretability and transfer. An agent that has built a clean, structured model of its environment is more likely to generalise than one that has found a noisy approximation that happens to score well on training tasks.
+
+This study addresses the question through a controlled experiment comparing DQN \cite{mnih2015human} and Double DQN (DDQN) \cite{van2016deep} across two structurally similar Atari games: Pong and Breakout. The two algorithms are architecturally identical --- same convolutional network, same replay buffer, same hyperparameters. The only difference is how the temporal difference (TD) target is computed: three lines of Python. This makes the comparison unusually clean. Any observed difference in the geometry of the learned representation space must be attributable to the learning rule alone, not architectural choices.
+
+Pong and Breakout were chosen deliberately. Both feature a ball, a paddle, and physics governed by deflection angles, giving them shared low-level visual structure. They differ substantially in strategic demands: Pong requires tracking and outmanoeuvring an opponent, while Breakout calls for systematic brick destruction across a wider field. This contrast allows the study to ask a second question: does game content or training algorithm exert the stronger influence on what a deep RL agent learns to represent internally?
+
+Two research questions guide the study:
+
+\begin{enumerate}
+    \item Do agents trained on structurally similar Atari games develop similar internal representations, and to what extent does shared visual structure produce shared representational geometry?
+    \item Does the choice of algorithm --- DQN versus DDQN --- affect the nature and quality of learned representations, independent of the game being played?
+\end{enumerate}
+
+The remainder of this report is organised as follows. Section~\ref{sec:background} covers the theoretical background on DQN, DDQN, and representation analysis methods. Section~\ref{sec:method} describes the experimental design in detail. Section~\ref{sec:results} presents the results across all four agents. Section~\ref{sec:analysis} discusses what the results mean and situates them in relation to the broader literature. Section~\ref{sec:conclusion} summarises the key findings and suggests directions for future work.
