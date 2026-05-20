@@ -17,7 +17,6 @@ env/
 results/checkpoints/
 results/logs/
 results/representations/
-results/plots/
 
 # Keep the results directory structure but not the files
 !results/.gitkeep
