@@ -19,4 +19,4 @@ checkpoint_dir: "results/checkpoints"
 checkpoint_freq: 500_000
 print_freq: 10
 tb_logging: true
-n_envs: 8
+n_envs: 1
