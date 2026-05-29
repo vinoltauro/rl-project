@@ -252,15 +252,20 @@ def fig_training_curves(log_dir: str, output_dir: str):
                 continue
 
             df = pd.read_csv(files[0])
-            raw      = df["reward"]
-            smoothed = raw.rolling(20, min_periods=1).mean()
-            steps    = df["total_steps"]
+            raw   = df["reward"]
+            steps = df["total_steps"]
+
+            # Scale smoothing window with episode count so Breakout
+            # (~150k short episodes) looks as smooth as Pong (~2.4k episodes)
+            window = max(20, len(df) // 100)
+
+            smoothed = raw.rolling(window, min_periods=1).mean()
 
             ax.plot(steps, smoothed, color=colour, linestyle=ls,
                     linewidth=2, label=label)
             ax.fill_between(steps,
-                            raw.rolling(20, min_periods=1).quantile(0.25),
-                            raw.rolling(20, min_periods=1).quantile(0.75),
+                            raw.rolling(window, min_periods=1).quantile(0.25),
+                            raw.rolling(window, min_periods=1).quantile(0.75),
                             alpha=0.15, color=colour)
 
         ax.set_xlabel("Training Steps")

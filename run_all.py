@@ -74,49 +74,64 @@ def _is_run_complete(checkpoint_dir: str, run_name: str, total_steps: int) -> bo
     return os.path.exists(final)
 
 
-def run_training(run_ids: list, smoke_test: bool = False, force_cpu: bool = False):
+def run_training(run_ids: list, smoke_test: bool = False, force_cpu: bool = False, seeds: list = None):
     """Launch training runs sequentially, auto-resuming from the latest checkpoint."""
-    for run_id in run_ids:
-        cfg_path = os.path.join(BASE_DIR, RUN_CONFIGS[run_id])
+    if seeds is None:
+        seeds = [None]   # None = use seed from config (default 42)
 
-        with open(cfg_path) as f:
-            cfg = yaml.safe_load(f)
-        run_name      = _make_run_name(cfg)
-        checkpoint_dir = cfg.get("checkpoint_dir", "results/checkpoints")
-        total_steps   = cfg["total_steps"]
-
-        # Skip runs that are fully complete (unless smoke_test mode)
-        if not smoke_test and _is_run_complete(checkpoint_dir, run_name, total_steps):
-            print(f"\n[SKIP] Run {run_id} ({RUN_NAMES[run_id]}) already complete")
-            print(f"       Final checkpoint: {run_name}_step{total_steps:08d}.pt")
-            continue
-
+    for seed in seeds:
+        seed_label = f"seed{seed}" if seed is not None else "default seed"
         print(f"\n{'='*60}")
-        print(f"  Starting Run {run_id}: {RUN_NAMES[run_id]}")
+        print(f"  Seed: {seed_label}")
         print(f"{'='*60}")
 
-        cmd = [sys.executable, os.path.join(BASE_DIR, "train.py"), "--config", cfg_path]
-        if smoke_test:
-            cmd += ["--steps", "50000"]
-        if force_cpu:
-            cmd += ["--cpu"]
+        for run_id in run_ids:
+            cfg_path = os.path.join(BASE_DIR, RUN_CONFIGS[run_id])
 
-        # Auto-resume from latest checkpoint if one exists
-        if not smoke_test:
-            latest = _find_latest_checkpoint(checkpoint_dir, run_name)
-            if latest:
-                print(f"[auto-resume] Resuming from: {os.path.basename(latest)}")
-                cmd += ["--resume", latest]
+            with open(cfg_path) as f:
+                cfg = yaml.safe_load(f)
 
-        start = time.time()
-        result = subprocess.run(cmd, cwd=BASE_DIR)
-        elapsed = (time.time() - start) / 60
+            if seed is not None:
+                cfg["seed"] = seed
 
-        if result.returncode != 0:
-            print(f"\n[ERROR] Run {run_id} failed (exit code {result.returncode})")
-            print(f"        Re-run `python run_all.py --runs {run_id}` to auto-resume")
-        else:
-            print(f"\n[OK] Run {run_id} complete in {elapsed:.1f}min")
+            run_name       = _make_run_name(cfg)
+            checkpoint_dir = cfg.get("checkpoint_dir", "results/checkpoints")
+            total_steps    = cfg["total_steps"]
+
+            # Skip runs that are fully complete (unless smoke_test mode)
+            if not smoke_test and _is_run_complete(checkpoint_dir, run_name, total_steps):
+                print(f"\n[SKIP] Run {run_id} ({RUN_NAMES[run_id]}) already complete")
+                print(f"       Final checkpoint: {run_name}_step{total_steps:08d}.pt")
+                continue
+
+            print(f"\n{'='*60}")
+            print(f"  Starting Run {run_id}: {RUN_NAMES[run_id]} | {seed_label}")
+            print(f"{'='*60}")
+
+            cmd = [sys.executable, os.path.join(BASE_DIR, "train.py"), "--config", cfg_path]
+            if smoke_test:
+                cmd += ["--steps", "50000"]
+            if force_cpu:
+                cmd += ["--cpu"]
+            if seed is not None:
+                cmd += ["--seed", str(seed)]
+
+            # Auto-resume from latest checkpoint if one exists
+            if not smoke_test:
+                latest = _find_latest_checkpoint(checkpoint_dir, run_name)
+                if latest:
+                    print(f"[auto-resume] Resuming from: {os.path.basename(latest)}")
+                    cmd += ["--resume", latest]
+
+            start  = time.time()
+            result = subprocess.run(cmd, cwd=BASE_DIR)
+            elapsed = (time.time() - start) / 60
+
+            if result.returncode != 0:
+                print(f"\n[ERROR] Run {run_id} failed (exit code {result.returncode})")
+                print(f"        Re-run `python run_all.py --runs {run_id}` to auto-resume")
+            else:
+                print(f"\n[OK] Run {run_id} complete in {elapsed:.1f}min")
 
 
 def run_analysis():
@@ -168,6 +183,8 @@ def main():
                         help="Force CPU mode (auto-applies CPU-optimised settings)")
     parser.add_argument("--runs", nargs="+", type=int, default=[1, 2, 3, 4],
                         help="Which runs to execute, e.g. --runs 1 3")
+    parser.add_argument("--seeds", nargs="+", type=int, default=None,
+                        help="Seeds to run, e.g. --seeds 42 1 123 (overrides config seed)")
     args = parser.parse_args()
 
     print(f"\n{'='*60}")
@@ -180,7 +197,7 @@ def main():
     print(f"{'='*60}")
 
     if not args.analysis_only:
-        run_training(args.runs, smoke_test=args.smoke_test, force_cpu=args.cpu)
+        run_training(args.runs, smoke_test=args.smoke_test, force_cpu=args.cpu, seeds=args.seeds)
 
     if not args.training_only:
         run_analysis()

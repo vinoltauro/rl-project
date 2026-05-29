@@ -328,10 +328,17 @@ def main():
         "--cpu", action="store_true",
         help="Force CPU training even if GPU is available"
     )
+    parser.add_argument(
+        "--seed", type=int, default=None,
+        help="Override the seed in the config (e.g. --seed 1)"
+    )
     args = parser.parse_args()
 
     with open(args.config, "r") as f:
         cfg = yaml.safe_load(f)
+
+    if args.seed is not None:
+        cfg["seed"] = args.seed
 
     # Make output directories
     os.makedirs(cfg.get("log_dir", "results/logs"), exist_ok=True)
