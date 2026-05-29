@@ -246,6 +246,20 @@ def make_atari_env(env_id: str, seed: int = 42, render_mode: str = None) -> gym.
     return env
 
 
+def make_vec_atari_env(env_id: str, n_envs: int = 8, seed: int = 42) -> gym.vector.AsyncVectorEnv:
+    """
+    Build N parallel Atari environments using AsyncVectorEnv.
+    Each env gets a different seed (seed, seed+1, ..., seed+n_envs-1).
+    Keeps all CPUs busy so the GPU is never waiting for frames.
+    """
+    def make_single(rank: int):
+        def _make():
+            return make_atari_env(env_id, seed=seed + rank)
+        return _make
+
+    return gym.vector.AsyncVectorEnv([make_single(i) for i in range(n_envs)])
+
+
 if __name__ == "__main__":
     # Quick sanity check
     for game in ["ALE/Pong-v5", "ALE/Breakout-v5"]:

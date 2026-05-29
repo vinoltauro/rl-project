@@ -33,7 +33,7 @@ import yaml
 # ── Path setup (run from project root) ───────────────────────────────────
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from envs.wrappers import make_atari_env
+from envs.wrappers import make_atari_env, make_vec_atari_env
 from agents.dqn import DQNAgent
 from agents.ddqn import DoubleDQNAgent
 from utils.replay_buffer import ReplayBuffer
@@ -167,10 +167,17 @@ def train(cfg: dict, resume_path: str = None, steps_override: int = None,
     print(f"{'='*60}\n")
 
     # ── Environment ───────────────────────────────────────────────────────
-    env = make_atari_env(cfg["env_id"], seed=cfg["seed"])
-    n_actions = env.action_space.n
-    print(f"[env] {cfg['env_id']} | actions={n_actions} | "
-          f"obs={env.observation_space.shape}")
+    n_envs = cfg.get("n_envs", 1)
+    if n_envs > 1:
+        env = make_vec_atari_env(cfg["env_id"], n_envs=n_envs, seed=cfg["seed"])
+        n_actions = env.single_action_space.n
+        print(f"[env] {cfg['env_id']} | actions={n_actions} | "
+              f"n_envs={n_envs} | obs={env.single_observation_space.shape}")
+    else:
+        env = make_atari_env(cfg["env_id"], seed=cfg["seed"])
+        n_actions = env.action_space.n
+        print(f"[env] {cfg['env_id']} | actions={n_actions} | "
+              f"obs={env.observation_space.shape}")
 
     # ── Agent ─────────────────────────────────────────────────────────────
     AgentClass = DoubleDQNAgent if cfg["algorithm"] == "ddqn" else DQNAgent
@@ -221,66 +228,116 @@ def train(cfg: dict, resume_path: str = None, steps_override: int = None,
     global_step  = start_step
     episode      = start_episode
     best_mean_r  = -float("inf")
-
-    obs, _ = env.reset()
-    ep_reward = 0
-    ep_length = 0
-    ep_start  = time.time()
+    checkpoint_freq = cfg.get("checkpoint_freq", 500_000)
 
     print(f"\n[training] Starting ... filling buffer for {cfg['learning_starts']:,} steps\n")
 
-    while global_step < total_steps:
+    if n_envs > 1:
+        # ── Vectorised training loop ───────────────────────────────────────
+        obs, _ = env.reset()                        # (N, 4, 84, 84)
+        ep_rewards = np.zeros(n_envs, dtype=np.float32)
+        ep_lengths = np.zeros(n_envs, dtype=np.int32)
 
-        # ── Select and execute action ──────────────────────────────────────
-        action = agent.select_action(obs)
-        next_obs, reward, terminated, truncated, info = env.step(action)
-        done = terminated or truncated
+        while global_step < total_steps:
+            # Select action for each env
+            actions = np.array([agent.select_action(obs[i]) for i in range(n_envs)])
 
-        # ── Store transition ───────────────────────────────────────────────
-        buffer.push(obs, action, float(reward), next_obs, done)
-        obs        = next_obs
-        ep_reward += reward
-        ep_length += 1
-        global_step += 1
+            next_obs, rewards, terminated, truncated, infos = env.step(actions)
+            dones = terminated | truncated
 
-        # ── Learn (once buffer is ready) ───────────────────────────────────
-        loss, mean_q = None, None
-        if global_step >= cfg["learning_starts"] and len(buffer) >= cfg["batch_size"]:
-            batch = buffer.sample(cfg["batch_size"])
-            loss, mean_q = agent.learn(batch)
-            logger.log_step(loss, mean_q)
+            # Store transitions — use final_observation for auto-reset envs
+            for i in range(n_envs):
+                final_obs = (
+                    infos["final_observation"][i]
+                    if dones[i] and "final_observation" in infos
+                    else next_obs[i]
+                )
+                buffer.push(obs[i], actions[i], float(rewards[i]), final_obs, dones[i])
 
-        # ── Episode end ────────────────────────────────────────────────────
-        if done:
-            episode += 1
-            mean_r = logger.log_episode(ep_reward, ep_length, agent.epsilon)
+            obs = next_obs
+            ep_rewards += rewards
+            ep_lengths += 1
+            global_step += n_envs
 
-            if episode % cfg.get("print_freq", 10) == 0:
-                logger.print_progress(ep_reward, agent.epsilon)
+            # Log completed episodes
+            for i in range(n_envs):
+                if dones[i]:
+                    episode += 1
+                    mean_r = logger.log_episode(ep_rewards[i], ep_lengths[i], agent.epsilon)
+                    if episode % cfg.get("print_freq", 10) == 0:
+                        logger.print_progress(ep_rewards[i], agent.epsilon)
+                    if mean_r > best_mean_r:
+                        best_mean_r = mean_r
+                    ep_rewards[i] = 0
+                    ep_lengths[i] = 0
 
-            # Track best performance
-            if mean_r > best_mean_r:
-                best_mean_r = mean_r
+            # Learn
+            if global_step >= cfg["learning_starts"] and len(buffer) >= cfg["batch_size"]:
+                batch = buffer.sample(cfg["batch_size"])
+                loss, mean_q = agent.learn(batch)
+                logger.log_step(loss, mean_q)
 
-            # Reset episode
-            obs, _ = env.reset()
-            ep_reward = 0
-            ep_length = 0
+            # Checkpoint
+            if global_step % checkpoint_freq < n_envs:
+                snapped = (global_step // checkpoint_freq) * checkpoint_freq
+                save_checkpoint(
+                    checkpoint_dir=cfg["checkpoint_dir"],
+                    run_name=run_name,
+                    step=snapped,
+                    model=agent.online_net,
+                    target_model=agent.target_net,
+                    optimizer=agent.optimizer,
+                    episode=episode,
+                    epsilon=agent.epsilon,
+                    config=cfg,
+                )
 
-        # ── Checkpoint ─────────────────────────────────────────────────────
-        checkpoint_freq = cfg.get("checkpoint_freq", 500_000)
-        if global_step % checkpoint_freq == 0:
-            save_checkpoint(
-                checkpoint_dir=cfg["checkpoint_dir"],
-                run_name=run_name,
-                step=global_step,
-                model=agent.online_net,
-                target_model=agent.target_net,
-                optimizer=agent.optimizer,
-                episode=episode,
-                epsilon=agent.epsilon,
-                config=cfg,
-            )
+    else:
+        # ── Single environment training loop (original) ────────────────────
+        obs, _ = env.reset()
+        ep_reward = 0
+        ep_length = 0
+
+        while global_step < total_steps:
+            action = agent.select_action(obs)
+            next_obs, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+
+            buffer.push(obs, action, float(reward), next_obs, done)
+            obs        = next_obs
+            ep_reward += reward
+            ep_length += 1
+            global_step += 1
+
+            loss, mean_q = None, None
+            if global_step >= cfg["learning_starts"] and len(buffer) >= cfg["batch_size"]:
+                batch = buffer.sample(cfg["batch_size"])
+                loss, mean_q = agent.learn(batch)
+                logger.log_step(loss, mean_q)
+
+            if done:
+                episode += 1
+                mean_r = logger.log_episode(ep_reward, ep_length, agent.epsilon)
+                if episode % cfg.get("print_freq", 10) == 0:
+                    logger.print_progress(ep_reward, agent.epsilon)
+                if mean_r > best_mean_r:
+                    best_mean_r = mean_r
+                obs, _ = env.reset()
+                ep_reward = 0
+                ep_length = 0
+
+            if global_step % checkpoint_freq == 0:
+                save_checkpoint(
+                    checkpoint_dir=cfg["checkpoint_dir"],
+                    run_name=run_name,
+                    step=global_step,
+                    model=agent.online_net,
+                    target_model=agent.target_net,
+                    optimizer=agent.optimizer,
+                    episode=episode,
+                    epsilon=agent.epsilon,
+                    config=cfg,
+                )
 
     # ── Final save ────────────────────────────────────────────────────────
     save_checkpoint(
