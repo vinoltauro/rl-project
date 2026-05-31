@@ -127,18 +127,23 @@ def run_tsne(
     Returns:
         (N, 2) embedded coordinates
     """
-    # Standardise before t-SNE
     scaler = StandardScaler()
     X = scaler.fit_transform(representations)
 
-    tsne = TSNE(
+    import sklearn
+    tsne_kwargs = dict(
         n_components=2,
         perplexity=perplexity,
-        n_iter=n_iter,
         random_state=random_state,
         verbose=0,
     )
-    return tsne.fit_transform(X)
+    # max_iter replaced n_iter in sklearn 1.5
+    if tuple(int(x) for x in sklearn.__version__.split(".")[:2]) >= (1, 5):
+        tsne_kwargs["max_iter"] = n_iter
+    else:
+        tsne_kwargs["n_iter"] = n_iter
+
+    return TSNE(**tsne_kwargs).fit_transform(X)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -406,7 +411,7 @@ def run_all(repr_dir: str, output_dir: str):
     fig_coloured_by_reward(repr_dir, output_dir)
 
     print("── Fig 10: Temporal evolution ────────────────────────")
-    for key in ["dqn_pong", "ddqn_breakout"]:
+    for key in ["dqn_pong", "dqn_breakout", "ddqn_pong", "ddqn_breakout"]:
         fig_temporal_evolution(repr_dir, output_dir, key=key)
 
     print(f"\n✓ All t-SNE figures saved to: {output_dir}\n")

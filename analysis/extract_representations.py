@@ -196,23 +196,50 @@ def extract_all_runs(
 
 
 if __name__ == "__main__":
-    # Example: extract representations from a single checkpoint
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--env",        required=True)
-    parser.add_argument("--n_actions",  type=int, required=True)
-    parser.add_argument("--output",     default="results/representations")
-    parser.add_argument("--n_steps",    type=int, default=5000)
+    parser.add_argument("--checkpoint_dir", default="results/checkpoints")
+    parser.add_argument("--output",         default="results/representations")
+    parser.add_argument("--n_steps",        type=int, default=5000)
+    # Single-checkpoint mode (optional overrides)
+    parser.add_argument("--checkpoint", default=None)
+    parser.add_argument("--env",        default=None)
+    parser.add_argument("--n_actions",  type=int, default=None)
     args = parser.parse_args()
 
-    data = collect_representations(
-        checkpoint_path=args.checkpoint,
-        env_id=args.env,
-        n_actions=args.n_actions,
-        n_steps=args.n_steps,
-    )
-    os.makedirs(args.output, exist_ok=True)
-    out = os.path.join(args.output, "repr_single.npz")
-    np.savez_compressed(out, **data)
-    print(f"Saved: {out} | shape: {data['representations'].shape}")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"[device] {device}")
+
+    if args.checkpoint:
+        # Single-checkpoint mode
+        assert args.env and args.n_actions, "--env and --n_actions required with --checkpoint"
+        data = collect_representations(
+            checkpoint_path=args.checkpoint,
+            env_id=args.env,
+            n_actions=args.n_actions,
+            n_steps=args.n_steps,
+            device=device,
+        )
+        os.makedirs(args.output, exist_ok=True)
+        out = os.path.join(args.output, "repr_single.npz")
+        np.savez_compressed(out, **data)
+        print(f"Saved: {out} | shape: {data['representations'].shape}")
+    else:
+        # Full extraction mode — all 4 runs, all checkpoints
+        run_configs = [
+            {"run_name": "dqn_pong_seed42_scalemedium_lr0001_buf100k",
+             "env_id": "ALE/Pong-v5",     "n_actions": 6, "algorithm": "dqn",  "net_scale": "medium"},
+            {"run_name": "dqn_breakout_seed42_scalemedium_lr0001_buf100k",
+             "env_id": "ALE/Breakout-v5", "n_actions": 4, "algorithm": "dqn",  "net_scale": "medium"},
+            {"run_name": "ddqn_pong_seed42_scalemedium_lr0001_buf100k",
+             "env_id": "ALE/Pong-v5",     "n_actions": 6, "algorithm": "ddqn", "net_scale": "medium"},
+            {"run_name": "ddqn_breakout_seed42_scalemedium_lr0001_buf100k",
+             "env_id": "ALE/Breakout-v5", "n_actions": 4, "algorithm": "ddqn", "net_scale": "medium"},
+        ]
+        extract_all_runs(
+            checkpoint_dir=args.checkpoint_dir,
+            output_dir=args.output,
+            run_configs=run_configs,
+            n_steps_per_run=args.n_steps,
+            device=device,
+        )
