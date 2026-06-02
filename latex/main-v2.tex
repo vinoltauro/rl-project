@@ -195,6 +195,14 @@ After training, each checkpoint is loaded and the agent runs in near-greedy mode
 
 To localise where cross-game representational similarity breaks down within the network, forward hooks are registered at four depths: the output of each of the three convolutional layers (conv1, conv2, conv3) and the 512-dimensional fully connected representation layer (fc\_repr). For a fixed set of game states, activation matrices are collected at each depth for DQN/Pong and DQN/Breakout, and pairwise CKA is computed between the two agents. The same analysis is repeated for DDQN/Pong and DDQN/Breakout. This produces a depth profile of cross-game similarity, revealing at which layer the shared visual structure gives way to game-specific strategic encoding.
 
+\subsection{Cross-Game Layer Transfer}
+
+To directly test whether the representational similarity identified by CKA translates into functional transferability, two complementary experiments are conducted.
+
+\textbf{Zero-shot mix-and-match.} Chimera networks are constructed by transplanting convolutional layers from one game's trained agent into another game's trained agent, with no additional training. The key architectural property that makes this possible is that the convolutional layers are independent of the action space; only the output head depends on the number of actions. Ten conditions are evaluated (five per game), spanning a spectrum from native agents (upper bound) through cross-game and cross-algorithm chimeras to fully random networks (lower bound). Each condition is evaluated over 50 episodes.
+
+\textbf{Backbone training.} A DQN agent is initialised from the converged DQN/Pong checkpoint and trained on Breakout for 5M steps under two freezing conditions: (1) \textit{frozen conv} -- convolutional layers locked, only fc\_repr and fc\_out train; (2) \textit{full fine-tune} -- all layers initialised from Pong but allowed to train freely on Breakout. Both are compared against the scratch DQN/Breakout baseline trained from random initialisation.
+
 % ============================================================
 \section{Results}
 \label{sec:results}
@@ -394,6 +402,61 @@ The pattern is consistent across both algorithms: CKA remains high at conv1 and 
 
 This layer-wise profile also has practical implications. Because early conv layers are functionally similar across games, they are strong candidates for freezing during cross-game transfer or fine-tuning. The fc\_repr layer, by contrast, carries predominantly game-specific information and would need to adapt substantially in any cross-game transfer setting.
 
+\subsection{Cross-Game Layer Transfer}
+
+\subsubsection{Zero-Shot Mix-and-Match}
+
+Figure~\ref{fig:mixmatch} shows the zero-shot performance of chimera networks evaluated on each game. The results are unambiguous: transplanting convolutional layers from one game's agent into another's yields performance indistinguishable from random.
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.48\linewidth}
+        \includegraphics[width=\linewidth]{figures/mix_and_match_breakout.png}
+        \caption{Evaluated on Breakout.}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\linewidth}
+        \includegraphics[width=\linewidth]{figures/mix_and_match_pong.png}
+        \caption{Evaluated on Pong.}
+    \end{subfigure}
+    \caption{Zero-shot mix-and-match evaluation. Transplanting conv layers from one game to another produces performance equivalent to random initialisation, despite CKA showing high similarity at those layers.}
+    \label{fig:mixmatch}
+\end{figure}
+
+On Breakout, DQN/Pong conv transplanted into a DQN/Breakout agent achieves a mean reward of $0.44 \pm 0.78$, compared to $0.40 \pm 1.00$ for random conv and $0.42 \pm 0.80$ for a fully random network. The native DQN/Breakout agent scores $3.40 \pm 3.82$. On Pong, the result is more extreme: any foreign conv layer -- whether from Breakout, a different algorithm, or random -- produces the worst possible score of $-21$, identical to a fully random agent.
+
+This result reveals a critical distinction between \textit{representational similarity} and \textit{functional compatibility}. CKA shows that conv1 and conv2 learn similar feature detectors across games, but the fc\_repr layer was trained to interpret the specific activation patterns produced by its own conv stack. Foreign conv activations, even if geometrically similar, fall outside the distribution that fc\_repr was trained on, causing it to produce meaningless Q-value estimates. The conv-to-fc interface is too tightly coupled for zero-shot transplantation.
+
+\subsubsection{Backbone Training}
+
+Figure~\ref{fig:backbone} shows learning curves for all three conditions over 5M training steps on Breakout.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\linewidth]{figures/backbone_comparison_reward.png}
+    \caption{Breakout learning curves: scratch DQN vs frozen Pong conv backbone vs full fine-tune from Pong. 500-episode rolling average.}
+    \label{fig:backbone}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Backbone training results on Breakout after 5M steps.}
+\label{tab:backbone}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Condition} & \textbf{Final Reward} & \textbf{Best Smoothed Reward} \\
+\midrule
+Scratch DQN/Breakout      & 3.86 & 4.07 \\
+Frozen conv (Pong)        & 2.28 & 3.03 \\
+Full fine-tune from Pong  & 3.12 & 4.47 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The frozen conv condition performs \textit{worse} than scratch throughout training, despite CKA indicating that Pong's conv layers are geometrically similar to those Breakout would develop independently. This appears contradictory, but is consistent with the zero-shot result: similarity of features does not imply interchangeability. Pong's conv layers are tuned to extract features that are reward-predictive in Pong's visual context -- opponent paddle trajectories, ball approach angles -- which differ subtly from the features most useful for Breakout. Freezing them prevents the network from adapting to the new game's specific visual demands.
+
+The full fine-tune condition achieves the highest peak smoothed reward (4.47 versus 4.07 for scratch), suggesting that initialising from a trained Pong network provides a useful starting point when all layers are free to adapt. The Pong initialisation contributes a prior over useful low-level visual features that accelerates early learning, visible as faster initial reward growth before the curves converge.
+
 % ============================================================
 \section{Discussion}
 \label{sec:analysis}
@@ -417,9 +480,13 @@ Critically, these representational differences emerge even though DQN and DDQN a
 
 \subsection{Implications for Transfer Learning}
 
-The CKA depth profile identified here has direct implications for cross-game transfer. Because conv1 and conv2 maintain high cross-game CKA similarity, they represent the most transferable components of the network: features learned on one game would remain relevant when applied to the other. Freezing these layers during cross-game fine-tuning would preserve their generalisation while allowing the deeper layers to specialise to the new game's strategic demands.
+The transfer experiments reveal a nuanced picture that goes beyond the CKA similarity profile alone. High CKA at early conv layers is a necessary but not sufficient condition for functional transfer. The zero-shot results show that even geometrically similar conv layers cannot be transplanted without retraining, because the downstream fc\_repr layer has co-adapted to its own conv stack's specific activation patterns.
 
-The fc\_repr layer, by contrast, shows substantial game-specific encoding. An agent pre-trained on Pong and fine-tuned on Breakout would need to substantially reorganise its representation layer, since the strategic demands differ, while its early convolutional features would carry over relatively well. The stronger cross-game CKA similarity under DDQN at deeper layers suggests DDQN retains marginally more transferable content at depth, which may give it a small advantage in fine-tuning settings.
+The frozen backbone result makes this concrete: locking Pong's conv layers actually \textit{hurts} Breakout learning relative to scratch, despite CKA indicating those layers are similar to what Breakout would develop independently. The frozen layers constrain the network to extract features tuned for Pong's visual context, which are close but not optimal for Breakout.
+
+The full fine-tune result is more positive: initialising all layers from Pong and allowing free adaptation achieves the highest peak performance (4.47 smoothed reward versus 4.07 for scratch). The Pong initialisation acts as a warm start -- it provides a useful prior over low-level visual features that accelerates early learning, even though the representation layer ultimately needs to reorganise substantially.
+
+Together, these results suggest a practical guideline for cross-game transfer: initialise from a related game but do not freeze layers, as the coupling between conv and fc layers is too tight to support partial freezing across games. The value of pre-training lies in the initialisation, not in preserving specific feature detectors.
 
 \subsection{Limitations}
 
@@ -447,9 +514,10 @@ This study has provided a controlled analysis of how structurally similar yet st
     \item \textbf{DDQN produces more structured representations within each game.} Tighter t-SNE cluster geometry, fewer dead neurons, more focused saliency, and higher cross-game cosine similarity all point to DDQN's cleaner gradient signal producing more organised internal models.
     \item \textbf{DQN overestimates Q-values systematically.} Mean max Q-values are substantially higher under DQN than DDQN, replicating the bias of van Hasselt et al.\ \cite{van2016deep} under reduced-buffer conditions.
     \item \textbf{Performance and representation quality are decoupled.} Both algorithms achieve near-identical task performance, confirming that reward alone is an insufficient indicator of whether an agent has built a clean internal model.
+    \item \textbf{Representational similarity does not imply functional transferability.} Zero-shot layer transplantation fails completely despite high CKA at early conv layers, because the conv-to-fc interface is tightly co-adapted during training. Frozen conv backbones underperform scratch training; only full fine-tune from a Pong initialisation provides a benefit, achieving a higher peak reward by using the pre-trained weights as a warm start rather than a fixed feature extractor.
 \end{enumerate}
 
-The central finding is that the line between shared and game-specific representations in deep RL agents corresponds closely to the line between shared visual features and distinct strategic demands, and that this line can be localised to specific layers using CKA. The early convolutional layers generalise; the representation layer specialises. This has direct implications for transfer learning and motivates further study of cross-game transfer, layer freezing, and representation geometry across a broader range of game types and training algorithms.
+The central finding is that the line between shared and game-specific representations in deep RL agents corresponds closely to the line between shared visual features and distinct strategic demands, and that this line can be localised to specific layers using CKA. The early convolutional layers generalise; the representation layer specialises. The transfer experiments further show that this similarity is geometrical rather than functional: similar features cannot be directly reused without retraining. These findings motivate further study of how pre-training can be leveraged across structurally similar tasks, and how the coupling between network layers shapes the limits of cross-task transfer.
 
 % ============================================================
 \newpage
