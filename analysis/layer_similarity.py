@@ -73,16 +73,38 @@ def linear_cka(X: np.ndarray, Y: np.ndarray) -> float:
 # ─────────────────────────────────────────────────────────────────────────────
 # Activation collection
 # ─────────────────────────────────────────────────────────────────────────────
-def collect_layer_activations(
+def collect_frames(env_id: str, n_frames: int, seed: int = 99) -> list:
+    """
+    Collect n_frames observations from env_id using random actions.
+    Returns a list of (4, 84, 84) uint8 numpy arrays.
+
+    Using random actions ensures diverse coverage of the state space
+    and avoids any dependence on a specific agent's policy.
+    """
+    env = make_atari_env(env_id, seed=seed)
+    obs, _ = env.reset()
+    frames = []
+    while len(frames) < n_frames:
+        frames.append(obs.copy())
+        action = env.action_space.sample()
+        obs, _, terminated, truncated, _ = env.step(action)
+        if terminated or truncated:
+            obs, _ = env.reset()
+    env.close()
+    return frames[:n_frames]
+
+
+def collect_activations_on_frames(
     checkpoint_path: str,
-    env_id:          str,
     n_actions:       int,
-    n_steps:         int          = 1000,
+    frames:          list,
     device:          torch.device = torch.device("cpu"),
-    seed:            int          = 99,
 ) -> dict:
     """
-    Load a checkpoint and collect activations at all four layers.
+    Run a checkpoint on a FIXED set of frames and collect activations.
+
+    Both networks in a comparison must use the same frames — this is the
+    key requirement for CKA to be meaningful.
 
     Conv layers are flattened to (N, C*H*W) for CKA computation.
 
@@ -99,36 +121,25 @@ def collect_layer_activations(
     def make_hook(name):
         def hook(module, input, output):
             act = output.detach().cpu().numpy()
-            if act.ndim == 4:                        # conv: (B, C, H, W)
-                act = act.reshape(act.shape[0], -1)  # → (B, C*H*W)
+            if act.ndim == 4:
+                act = act.reshape(act.shape[0], -1)
             storage[name].append(act)
         return hook
 
     # Conv Sequential layout: [Conv2d, ReLU, Conv2d, ReLU, Conv2d, ReLU]
-    #                indices:     0       1     2       3     4       5
     handles.append(model.conv[1].register_forward_hook(make_hook("conv1")))
     handles.append(model.conv[3].register_forward_hook(make_hook("conv2")))
     handles.append(model.conv[5].register_forward_hook(make_hook("conv3")))
     handles.append(model.fc_repr.register_forward_hook(make_hook("fc_repr")))
 
-    env = make_atari_env(env_id, seed=seed)
-    obs, _ = env.reset()
-
     with torch.no_grad():
-        for _ in range(n_steps):
+        for obs in frames:
             state_t = (
                 torch.from_numpy(obs).float().div(255.0)
                 .unsqueeze(0).to(device)
             )
-            q_vals = model(state_t)
-            action = int(q_vals.argmax(dim=1).item())
-            next_obs, _, terminated, truncated, _ = env.step(action)
-            if terminated or truncated:
-                obs, _ = env.reset()
-            else:
-                obs = next_obs
+            _ = model(state_t)
 
-    env.close()
     for h in handles:
         h.remove()
 
@@ -156,22 +167,40 @@ def run(checkpoint_dir: str, output_dir: str, n_steps: int):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[device] {device}")
 
-    RUNS = {
-        "dqn_pong":      ("dqn_pong_seed42_scalemedium_lr0001_buf100k",      "ALE/Pong-v5",     6),
-        "dqn_breakout":  ("dqn_breakout_seed42_scalemedium_lr0001_buf100k",  "ALE/Breakout-v5", 4),
-        "ddqn_pong":     ("ddqn_pong_seed42_scalemedium_lr0001_buf100k",     "ALE/Pong-v5",     6),
-        "ddqn_breakout": ("ddqn_breakout_seed42_scalemedium_lr0001_buf100k", "ALE/Breakout-v5", 4),
+    CKPTS = {
+        "dqn_pong":      ("dqn_pong_seed42_scalemedium_lr0001_buf100k",      6),
+        "dqn_breakout":  ("dqn_breakout_seed42_scalemedium_lr0001_buf100k",  4),
+        "ddqn_pong":     ("ddqn_pong_seed42_scalemedium_lr0001_buf100k",     6),
+        "ddqn_breakout": ("ddqn_breakout_seed42_scalemedium_lr0001_buf100k", 4),
     }
 
-    # ── Collect activations ───────────────────────────────────────────────────
+    # ── Collect shared frame sets ─────────────────────────────────────────────
+    # CKA requires BOTH networks to process the SAME inputs.
+    # We collect frames independently of any agent policy (random actions)
+    # so the frame set is neutral and not biased toward either agent.
+    print(f"\n[frames] Collecting {n_steps} shared Pong frames ...")
+    pong_frames     = collect_frames("ALE/Pong-v5",     n_steps, seed=42)
+    print(f"[frames] Collecting {n_steps} shared Breakout frames ...")
+    breakout_frames = collect_frames("ALE/Breakout-v5", n_steps, seed=42)
+
+    # Game-effect comparisons use Pong frames (neutral probe of both networks
+    # on the same visual input — what did each network learn to do with Pong pixels?)
+    FRAME_SETS = {
+        "dqn_pong":      pong_frames,
+        "ddqn_pong":     pong_frames,
+        "dqn_breakout":  pong_frames,     # run Breakout agent on Pong frames
+        "ddqn_breakout": pong_frames,
+    }
+
+    # ── Collect activations on shared frames ──────────────────────────────────
     all_acts = {}
-    for key, (prefix, env_id, n_actions) in RUNS.items():
-        print(f"\n[collect] {key} ...")
+    for key, (prefix, n_actions) in CKPTS.items():
+        print(f"\n[collect] {key} on shared frames ...")
         try:
             ckpt = find_final_checkpoint(checkpoint_dir, prefix)
             print(f"  checkpoint: {os.path.basename(ckpt)}")
-            all_acts[key] = collect_layer_activations(
-                ckpt, env_id, n_actions, n_steps=n_steps, device=device
+            all_acts[key] = collect_activations_on_frames(
+                ckpt, n_actions, FRAME_SETS[key], device=device
             )
             for layer, arr in all_acts[key].items():
                 print(f"  {layer}: {arr.shape}")
@@ -200,7 +229,7 @@ def run(checkpoint_dir: str, output_dir: str, n_steps: int):
         "Algorithm effect (Breakout)": "#9C27B0",
     }
 
-    print(f"\n[CKA] Computing (subsample N=1000 per comparison) ...")
+    print(f"\n[CKA] Computing on shared frames (N={n_steps}) ...")
     results = {}
 
     for comp_name, (key_a, key_b) in COMPARISONS.items():
@@ -212,13 +241,7 @@ def run(checkpoint_dir: str, output_dir: str, n_steps: int):
         for layer in LAYERS:
             A = all_acts[key_a][layer]
             B = all_acts[key_b][layer]
-
-            n = min(len(A), len(B), 1000)
-            rng = np.random.default_rng(42)
-            A_sub = A[rng.choice(len(A), n, replace=False)]
-            B_sub = B[rng.choice(len(B), n, replace=False)]
-
-            cka = linear_cka(A_sub, B_sub)
+            cka = linear_cka(A, B)
             results[comp_name].append(cka)
             print(f"  {comp_name:<35} {layer:<10} CKA = {cka:.4f}")
 
