@@ -24,6 +24,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+from scipy.ndimage import zoom, gaussian_filter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -119,23 +120,14 @@ def compute_gradcam(
     cam     = (weights * acts).sum(dim=0)            # (H, W)
     cam     = F.relu(cam).cpu().numpy()              # Only positive influence
 
-    # Upsample to input resolution (84, 84)
+    # Upsample to input resolution (84, 84) using smooth bilinear zoom
     if cam.max() > 0:
         cam = cam / cam.max()
-    cam_upsampled = np.array(
-        plt.cm.jet(
-            np.clip(
-                np.kron(cam, np.ones((84 // cam.shape[0] + 1, 84 // cam.shape[1] + 1)))
-                [:84, :84],
-                0, 1
-            )
-        )
-    )[:, :, :3]   # Drop alpha channel
-
-    # Return single-channel heatmap
-    return cam.repeat(84 // cam.shape[0] + 1, axis=0).repeat(
-        84 // cam.shape[1] + 1, axis=1
-    )[:84, :84]
+    scale_h = 84 / cam.shape[0]
+    scale_w = 84 / cam.shape[1]
+    cam_upsampled = zoom(cam, (scale_h, scale_w), order=1)  # bilinear
+    cam_upsampled = np.clip(cam_upsampled, 0, 1)
+    return cam_upsampled
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -234,8 +226,9 @@ def fig_saliency_comparison(
         print(f"[WARNING] No frames collected for {game_name}")
         return
 
-    fig = plt.figure(figsize=(12, 3 * len(frames)))
-    gs  = gridspec.GridSpec(len(frames), 3, hspace=0.4, wspace=0.3)
+    # Use larger subplots and higher DPI for clarity
+    fig = plt.figure(figsize=(14, 4 * len(frames)))
+    gs  = gridspec.GridSpec(len(frames), 3, hspace=0.35, wspace=0.15)
 
     for row, frame_data in enumerate(frames):
         obs    = frame_data["stacked_obs"]
@@ -244,35 +237,52 @@ def fig_saliency_comparison(
         sal_dqn  = compute_vanilla_saliency(model_dqn,  obs, device)
         sal_ddqn = compute_vanilla_saliency(model_ddqn, obs, device)
 
+        # Gaussian smoothing for cleaner saliency overlay
+        sal_dqn  = gaussian_filter(sal_dqn,  sigma=1.5)
+        sal_ddqn = gaussian_filter(sal_ddqn, sigma=1.5)
+
+        # Re-normalise after smoothing
+        if sal_dqn.max() > 0:
+            sal_dqn = sal_dqn / sal_dqn.max()
+        if sal_ddqn.max() > 0:
+            sal_ddqn = sal_ddqn / sal_ddqn.max()
+
+        imshow_kwargs = dict(interpolation="bilinear")
+
         # Column 0: Raw game frame
         ax0 = fig.add_subplot(gs[row, 0])
-        ax0.imshow(raw_f, cmap="gray", vmin=0, vmax=255)
-        ax0.set_title(f"Game Frame\n(r={frame_data['reward']:.0f})", fontsize=9)
+        ax0.imshow(raw_f, cmap="gray", vmin=0, vmax=255, **imshow_kwargs)
+        ax0.set_title(f"Game Frame  (r={frame_data['reward']:.0f})",
+                      fontsize=10, pad=6)
         ax0.axis("off")
 
         # Column 1: DQN saliency overlay
         ax1 = fig.add_subplot(gs[row, 1])
-        ax1.imshow(raw_f, cmap="gray", vmin=0, vmax=255)
-        ax1.imshow(sal_dqn, cmap="hot", alpha=0.6, vmin=0, vmax=1)
-        ax1.set_title(f"DQN Saliency\n(step {step_dqn:,})", fontsize=9)
+        ax1.imshow(raw_f, cmap="gray", vmin=0, vmax=255, **imshow_kwargs)
+        ax1.imshow(sal_dqn, cmap="inferno", alpha=0.55, vmin=0, vmax=1,
+                   **imshow_kwargs)
+        ax1.set_title(f"DQN Saliency  (step {step_dqn:,})",
+                      fontsize=10, pad=6)
         ax1.axis("off")
 
         # Column 2: DDQN saliency overlay
         ax2 = fig.add_subplot(gs[row, 2])
-        ax2.imshow(raw_f, cmap="gray", vmin=0, vmax=255)
-        ax2.imshow(sal_ddqn, cmap="hot", alpha=0.6, vmin=0, vmax=1)
-        ax2.set_title(f"DDQN Saliency\n(step {step_ddqn:,})", fontsize=9)
+        ax2.imshow(raw_f, cmap="gray", vmin=0, vmax=255, **imshow_kwargs)
+        ax2.imshow(sal_ddqn, cmap="inferno", alpha=0.55, vmin=0, vmax=1,
+                   **imshow_kwargs)
+        ax2.set_title(f"DDQN Saliency  (step {step_ddqn:,})",
+                      fontsize=10, pad=6)
         ax2.axis("off")
 
     fig.suptitle(
         f"Saliency Maps: DQN vs Double DQN on {game_name}\n"
-        "Bright = pixels most influential for Q-value",
-        fontsize=12
+        "Bright regions = pixels most influential for Q-value",
+        fontsize=13, y=1.01,
     )
 
     out = os.path.join(output_dir, f"saliency_{game_name.lower()}.png")
     os.makedirs(output_dir, exist_ok=True)
-    fig.savefig(out, dpi=150, bbox_inches="tight")
+    fig.savefig(out, dpi=200, bbox_inches="tight")
     plt.close(fig)
     print(f"[saliency] Saved → {out}")
 
