@@ -24,13 +24,18 @@ LOG_DIR    = "results/logs"
 OUTPUT_DIR = "results/plots"
 
 RUNS = {
-    "Full sequential (no freeze)": {
+    "No freeze (full sequential)": {
         "file":  "dqn_sequential_sequential_full_seed42_scalemedium_forgetting.csv",
         "color": "#F44336",
         "style": "-",
     },
-    "Frozen conv backbone": {
-        "file":  "dqn_sequential_freeze_conv_seed42_scalemedium_forgetting.csv",
+    "Freeze conv + fc\\_repr (all)": {
+        "file":  "dqn_fixed_sequential_freeze_all_seed42_scalemedium_forgetting.csv",
+        "color": "#4CAF50",
+        "style": "-",
+    },
+    "Freeze conv only": {
+        "file":  "dqn_fixed_sequential_freeze_conv_fixed_seed42_scalemedium_forgetting.csv",
         "color": "#2196F3",
         "style": "--",
     },
