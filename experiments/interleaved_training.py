@@ -135,11 +135,11 @@ class InterleavedDQNAgent:
         return int(q_vals.argmax(1).item())
 
     def learn(self, batch: dict, game: str):
-        states      = batch["states"].float() / 255.0
-        actions     = batch["actions"].long()
-        rewards     = batch["rewards"]
-        next_states = batch["next_states"].float() / 255.0
-        dones       = batch["dones"]
+        states      = batch.states.float() / 255.0
+        actions     = batch.actions.long()
+        rewards     = batch.rewards
+        next_states = batch.next_states.float() / 255.0
+        dones       = batch.dones
 
         with torch.no_grad():
             next_q = self.target_net(next_states, game=game).max(1).values
