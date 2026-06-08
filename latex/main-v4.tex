@@ -372,7 +372,7 @@ Figure~\ref{fig:architecture}.
 %% ---- Forward hook annotation ----
 \draw[dashed, tcdBlue, thick] (fc.north) -- ++(0, 0.8)
     node[above, font=\scriptsize\bfseries, text=tcdBlue]
-    {\textrightarrow\ forward hook (all analysis)};
+    {$\rightarrow$ forward hook (all analysis)};
 
 %% ---- Backbone bracket ----
 \draw[tcdBlue!40, thick, rounded corners=3pt]
@@ -980,28 +980,27 @@ for a direct cross-condition comparison.
 \begin{table}[H]
 \centering
 \caption{Master results summary across all experimental conditions. Dead neuron fractions
-are measured at fc\_repr. Breakout performance for sequential conditions is estimated from
-the no-freeze run; freeze-all Breakout is not optimised (only the 2,052-parameter output
-head trains).}
+are measured at fc\_repr. n/a indicates the metric is not applicable for that condition.}
 \label{tab:master}
-\begin{tabularx}{\linewidth}{lXXXX}
+\small
+\begin{tabular}{lcccc}
 \toprule
-\textbf{Condition} & \textbf{Pong (final)} & \textbf{Breakout (final)} & \textbf{Dead neurons} & \textbf{Key finding} \\
+\textbf{Condition} & \textbf{Pong reward} & \textbf{Breakout reward} & \textbf{Dead neurons} & \textbf{Key finding} \\
 \midrule
-DQN standalone       & $7.12 \pm 5.22$  & $3.86 \pm 4.94$ & baseline & Task-specific fc\_repr \\
-DDQN standalone      & $7.50 \pm 5.03$  & $4.00 \pm 5.04$ & lower    & Tighter representations \\
+DQN standalone        & $7.12 \pm 5.22$   & $3.86 \pm 4.94$   & 0.88 (baseline) & Game-specific fc\_repr \\
+DDQN standalone       & $7.50 \pm 5.03$   & $4.00 \pm 5.04$   & lower than DQN  & Tighter representations \\
 \midrule
-Scratch Breakout     & --               & 3.86            & --       & Baseline for transfer \\
-Frozen conv (Pong)   & --               & 2.28            & --       & Conv too Pong-specific \\
-Full fine-tune       & --               & 3.12 (peak 4.47)& --       & Best Breakout peak \\
+Scratch Breakout      & n/a               & 3.86              & n/a             & Transfer baseline \\
+Frozen conv (Pong)    & n/a               & 2.28              & n/a             & Conv too task-specific \\
+Full fine-tune (Pong) & n/a               & 3.12 (peak 4.47)  & n/a             & Best Breakout peak \\
 \midrule
-Sequential no freeze & $-$20.8          & $\sim$3.5       & 0.87     & Immediate forgetting \\
-Sequential freeze conv & $-$14.0        & $\sim$2.5       & 0.84     & fc\_repr still forgets \\
-Sequential freeze all  & $+$9.4         & limited         & 0.88     & Forgetting prevented \\
+Sequential no freeze  & $-20.8$           & approx.\ 3.5      & 0.87            & Immediate forgetting \\
+Sequential freeze conv & $-14.0$          & approx.\ 2.5      & 0.84            & fc\_repr still forgets \\
+Sequential freeze all & $+9.4$            & limited           & 0.88            & Forgetting prevented \\
 \midrule
-Interleaved (v2)     & $-$21.0          & 0.4             & \textbf{0.92} & Worst outcome \\
+Interleaved (v2)      & $-21.0$           & 0.4               & \textbf{0.92}   & Worst outcome \\
 \bottomrule
-\end{tabularx}
+\end{tabular}
 \end{table}
 
 % ============================================================
