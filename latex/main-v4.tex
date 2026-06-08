@@ -337,35 +337,7 @@ Figure~\ref{fig:architecture}.
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[transform shape, scale=0.82,
-    node distance=0.5cm,
-    lyr/.style={rectangle, draw, rounded corners=3pt, thick,
-                minimum width=2.1cm, minimum height=1.6cm, text centered, font=\small}
-]
-
-\node[lyr, fill=gray!15]        (inp) {Input\\[3pt]\scriptsize $4\times84\times84$};
-\node[lyr, fill=tcdBlue!20, right=of inp] (c1) {Conv1\\[3pt]\scriptsize 32, $8\times8$, s4\\[1pt]\scriptsize ReLU};
-\node[lyr, fill=tcdBlue!20, right=of c1]  (c2) {Conv2\\[3pt]\scriptsize 64, $4\times4$, s2\\[1pt]\scriptsize ReLU};
-\node[lyr, fill=tcdBlue!20, right=of c2]  (c3) {Conv3\\[3pt]\scriptsize 64, $3\times3$, s1\\[1pt]\scriptsize ReLU};
-\node[lyr, fill=orange!20,  right=of c3]  (fl) {Flatten\\[3pt]\scriptsize 3,136};
-\node[lyr, fill=green!25, very thick, right=of fl] (fc) {\textbf{fc\_repr}\\[3pt]\scriptsize 512-dim\\[1pt]\scriptsize ReLU};
-\node[lyr, fill=red!15,    right=of fc]   (out){fc\_out\\[3pt]\scriptsize $n$ actions\\[1pt]\scriptsize Q-values};
-
-\draw[-Stealth,thick] (inp)--(c1);
-\draw[-Stealth,thick] (c1)--(c2);
-\draw[-Stealth,thick] (c2)--(c3);
-\draw[-Stealth,thick] (c3)--(fl);
-\draw[-Stealth,thick] (fl)--(fc);
-\draw[-Stealth,thick] (fc)--(out);
-
-\node[font=\scriptsize, below=0.15cm of c1] {$32\times20\times20$};
-\node[font=\scriptsize, below=0.15cm of c2] {$64\times9\times9$};
-\node[font=\scriptsize, below=0.15cm of c3] {$64\times7\times7$};
-
-\draw[dashed, thick] (fc.north) -- ++(0,0.7)
-    node[above, font=\scriptsize\bfseries] {forward hook};
-
-\end{tikzpicture}
+\includegraphics[width=\linewidth]{figures/architecture.png}
 \caption{CNN architecture shared by all agents. Input frames (4 stacked grayscale
 frames at $84\times84$) pass through three convolutional layers (blue) and a flatten
 step before reaching the 512-dimensional \texttt{fc\_repr} layer (green), where a
