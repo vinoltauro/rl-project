@@ -1,7 +1,7 @@
 # Comprehensive Project Audit
 
-> Last updated: June 6, 2026
-> This file is the single source of truth for everything that has happened in this project.
+> Last updated: June 8, 2026
+> Single source of truth for everything that has happened in this project.
 > Read this to get full context instantly after any gap.
 
 ---
@@ -16,7 +16,7 @@
 | Email | taurov@tcd.ie |
 | GitHub | https://github.com/vinoltauro/rl-project |
 | Hardware | GCP VM, NVIDIA L4 GPU (23.7 GB) |
-| Deadlines | ~9 weeks to demo, ~12 weeks to dissertation submission (as of late May 2026) |
+| Deadlines | ~9 weeks to demo, ~12 weeks to dissertation (as of late May 2026) |
 
 ---
 
@@ -26,13 +26,13 @@
 - Meeting 26 May 2026: professor asked for mix-and-match, layer freezing, interleaved training, PPO
 - Professor reply 2 June 2026: will read report, no meeting Tuesday 9 June, suggested meeting later that week
 - Professor's broad theme: "understanding natural impact of continual learning on neural network structures and how to mitigate it"
-- Key concepts professor mentioned: catastrophic forgetting, capacity loss (dead neurons), superposition (Elhage et al. 2022), continual backpropagation
+- Key concepts professor mentioned: catastrophic forgetting, capacity loss (dead neurons), superposition (Elhage et al. 2022), continual backpropagation (Elsayed & Mahmood 2024)
 
 ---
 
 ## Research Question
 
-Do RL agents trained on structurally similar Atari games develop similar internal representations, and does algorithm choice (DQN vs DDQN) affect representation quality? What happens to those representations when the agent is forced to switch games sequentially or train on both games simultaneously?
+Do RL agents trained on structurally similar Atari games develop similar internal representations, and does algorithm choice affect representation quality? What happens when an agent is forced to switch games sequentially or train on both simultaneously?
 
 ---
 
@@ -49,9 +49,10 @@ Input: (4, 84, 84) stacked grayscale frames
 ```
 
 - ~1.69M total parameters, ~95% in fc_repr
-- Orthogonal weight initialisation (Saxe et al. 2014)
-- Forward hook captures fc_repr activations after every forward pass
+- Orthogonal weight initialisation
+- Forward hook captures fc_repr activations silently
 - fc_out cannot be shared between games (different action counts)
+- Two-head variant (models/cnn_two_head.py): shared conv+fc_repr, separate fc_out per game
 
 ---
 
@@ -74,7 +75,7 @@ Input: (4, 84, 84) stacked grayscale frames
 ## Experiment 1 — Baseline 4-Agent Study
 
 ### Design
-2×2 factorial: DQN and DDQN × Pong (2M steps) and Breakout (5M steps)
+2×2 factorial: DQN and DDQN × Pong (2M steps) and Breakout (5M steps).
 
 ### Training Results
 
@@ -86,29 +87,30 @@ Input: (4, 84, 84) stacked grayscale frames
 | DDQN / Breakout | 144,948 | 4.00 ± 5.04 | 4.13 | 4.55 |
 
 ### Key Findings
-1. Game effect dominates — t-SNE separates cleanly by game, not algorithm
-2. DDQN produces tighter, more structured representations within each game
-3. DQN overestimates Q-values by ~29% on Pong, ~18% peak on Breakout
-4. DQN has more dead neurons than DDQN across both games
-5. Cross-game cosine similarity is non-trivial (shared ball/paddle visual structure)
-6. Performance and representation quality are decoupled — both score similarly, DDQN represents better
+1. Game effect dominates — t-SNE separates by game not algorithm
+2. DDQN produces tighter, more structured representations
+3. DQN overestimates Q-values ~29% on Pong, ~18% peak on Breakout
+4. DQN has more dead neurons than DDQN
+5. Cross-game cosine similarity is non-trivial
+6. Performance and representation quality are decoupled
 
 ### Status
-✅ Complete. All checkpoints saved. All plots generated and in report v2.
+✅ Complete. All checkpoints and plots in report v2/v3.
 
 ---
 
 ## Experiment 2 — CKA Layer Similarity
 
 ### Design
-Forward hooks at conv1, conv2, conv3, fc_repr. Collect activations on shared Pong frames (1000 frames, random actions). Compute pairwise CKA between agents at each depth.
+Forward hooks at conv1, conv2, conv3, fc_repr. Shared Pong frames (1000, random actions). Pairwise CKA at each depth.
 
 ### Bug Fixed
-Original script ran each agent on its own game's frames — CKA between different inputs is meaningless (all values ~0.006–0.052). Fixed by collecting shared Pong frames with random actions and running all networks on the same inputs.
+Original: each agent ran on its own game's frames — meaningless (values ~0.006–0.052).
+Fix: shared Pong frames via random actions, all networks on same inputs.
 
 ### CKA Results (corrected)
 
-| Layer | Game effect DQN | Game effect DDQN | Algo effect Pong | Algo effect Breakout |
+| Layer | Game DQN | Game DDQN | Algo Pong | Algo Breakout |
 |---|---|---|---|---|
 | conv1 | 0.68 | 0.92 | 0.998 | 0.74 |
 | conv2 | 0.72 | 0.85 | 0.96 | 0.72 |
@@ -118,86 +120,76 @@ Original script ran each agent on its own game's frames — CKA between differen
 ### Key Findings
 - Early conv layers highly similar across games (conv1/2 CKA > 0.68)
 - fc_repr almost completely diverged (CKA < 0.09)
-- Sharpest drop at the conv→fc boundary
-- This is the quantitative evidence the professor asked for to support the hierarchy claim from v1
+- Sharpest drop at conv→fc boundary
+- Quantitative evidence the professor asked for to support the hierarchy claim
 
 ### Status
-✅ Complete. Bug fixed. Numbers in report v2.
+✅ Complete. Bug fixed. Numbers in report v2/v3.
 
 ---
 
 ## Experiment 3 — Zero-Shot Mix-and-Match
 
 ### Design
-Chimera networks: transplant conv layers from one trained agent into another's upper layers. No additional training. 50 episodes per condition, 10 conditions total.
+Chimera networks: transplant conv layers between agents, no training. 50 episodes, 10 conditions.
 
-### Results — Breakout Evaluation
+### Results — Breakout
 
 | Condition | Mean Reward |
 |---|---|
 | Native DQN/Breakout | 3.40 ± 3.82 |
 | DQN/Pong conv + Breakout upper | 0.44 ± 0.78 |
-| DDQN/Pong conv + Breakout upper | 0.80 ± 1.36 |
 | Random conv + Breakout upper | 0.40 ± 1.00 |
 | Random network | 0.42 ± 0.80 |
 
-### Results — Pong Evaluation
+### Results — Pong
 
 | Condition | Mean Reward |
 |---|---|
 | Native DQN/Pong | 9.54 ± 5.08 |
 | DQN/Breakout conv + Pong upper | -20.72 ± 0.45 |
-| DDQN/Breakout conv + Pong upper | -21.00 ± 0.00 |
 | Random conv + Pong upper | -21.00 ± 0.00 |
-| Random network | -21.00 ± 0.00 |
 
 ### Key Findings
 - Zero-shot transfer completely fails
-- Pong conv ≈ random on Breakout (0.44 vs 0.40)
+- Pong conv ≈ random on Breakout
 - Any foreign conv on Pong = worst possible score (-21)
-- Representational similarity (CKA) does not imply functional compatibility
-- The conv-to-fc interface is too tightly co-adapted for zero-shot transplantation
+- CKA similarity ≠ functional compatibility; conv-fc co-adaptation prevents transplantation
 
 ### Status
-✅ Complete. Plots in report v2.
+✅ Complete. Plots in report v2/v3.
 
 ---
 
-## Experiment 4 — Backbone Training (Transfer with Adaptation)
+## Experiment 4 — Backbone Training
 
 ### Design
-Load DQN/Pong checkpoint. Train on Breakout for 5M steps under three conditions:
-- Scratch: random init baseline (already existed from Experiment 1)
-- Freeze conv: Pong conv frozen, fc_repr + new Breakout fc_out train
-- Full fine-tune: all layers loaded from Pong, everything trains freely
+DQN from Pong checkpoint, 5M steps on Breakout: scratch, frozen conv, full fine-tune.
 
 ### Results
 
-| Condition | Final Reward | Best Smoothed Reward |
+| Condition | Final Reward | Best Smoothed |
 |---|---|---|
-| Scratch DQN/Breakout | 3.86 | 4.07 |
+| Scratch | 3.86 | 4.07 |
 | Frozen conv (Pong) | 2.28 | 3.03 |
 | Full fine-tune from Pong | 3.12 | 4.47 |
 
 ### Key Findings
-- Frozen conv hurts Breakout learning (below scratch)
-- Full fine-tune peaks highest — Pong weights as warm start help when everything adapts
-- Pre-training only beneficial when all layers are free to reorganise
+- Frozen conv hurts Breakout (below scratch)
+- Full fine-tune peaks highest — Pong weights as warm start
+- Pre-training only beneficial when all layers adapt freely
 
 ### Status
-✅ Complete. Plots in report v2.
+✅ Complete. Plots in report v2/v3.
 
 ---
 
-## Experiment 5 — Sequential Training (Catastrophic Forgetting Baseline)
+## Experiment 5 — Sequential Training Baseline (Catastrophic Forgetting)
 
 ### Design
-Load DQN/Pong checkpoint. Train on Breakout for 2M steps. Measure every 200k steps:
-1. Pong reward: chimera eval (current conv+fc_repr + original Pong fc_out)
-2. Dead neuron fraction
-3. CKA drift from original Pong representations
+DQN/Pong checkpoint → train on Breakout 2M steps, --freeze none. Measure every 200k: Pong reward (chimera eval), dead neurons, CKA drift.
 
-### Results — Freeze None (Full Sequential)
+### Results
 
 | Step | Pong Reward | Dead Neurons | CKA Drift |
 |---|---|---|---|
@@ -207,35 +199,25 @@ Load DQN/Pong checkpoint. Train on Breakout for 2M steps. Measure every 200k ste
 | 1M | -20.95 | 0.820 | 0.034 |
 | 2M | -20.8 | 0.867 | 0.041 |
 
-### Results — Freeze Conv (Original, Broken Design)
-Started at Pong reward = -20.9 at step 0 because fc_repr was randomly reinitialised. This made the comparison meaningless — see Experiment 6 for the fixed version.
-
 ### Key Findings
-- Forgetting is immediate and total — Pong collapses to -21 by 200k steps
-- Dead neurons increase steadily (0.729 → 0.867) — capacity loss mechanism confirmed
-- CKA drift is immediate — representations moved from Pong baseline instantly
+- Forgetting immediate and total — -21 by 200k steps, never recovers
+- Dead neurons increase steadily 0.729 → 0.867
+- CKA drift immediate, stays there
+- Forgetting occurs at fc_repr level
 
 ### Status
-✅ Complete. Results committed.
+✅ Complete.
 
 ---
 
 ## Experiment 6 — Fixed Sequential Training (Proper Mitigation Study)
 
 ### Design
-Same as Experiment 5 but with corrected conditions:
+Corrected version. Always loads fc_repr from Pong (original bug: fc_repr randomly reinitialised making comparison meaningless).
 
-**Condition A (freeze all):**
-- Load conv + fc_repr from Pong, BOTH frozen
-- Add new fc_out_breakout (4 actions), train ONLY this (2,052 params)
-- Pong eval: frozen conv + frozen fc_repr + original Pong fc_out
-- Tests: maximum protection — nothing in Pong pathway changes
+**Condition A (freeze all):** conv + fc_repr frozen, only new Breakout fc_out (2,052 params) trains. Maximum protection.
 
-**Condition B (freeze conv fixed):**
-- Load conv (frozen) + fc_repr (trainable) from Pong
-- New fc_out_breakout trains alongside fc_repr
-- Pong eval: frozen conv + adapted fc_repr + original Pong fc_out
-- Tests: partial protection — conv preserved, fc_repr free to adapt
+**Condition B (freeze conv):** conv frozen, fc_repr + new Breakout fc_out train. Partial protection.
 
 ### Results — Condition A (Freeze All)
 
@@ -255,42 +237,76 @@ Same as Experiment 5 but with corrected conditions:
 | 1M | -12.05 | 0.811 | 0.092 |
 | 2M | -14.0 | 0.836 | 0.043 |
 
+### Complete Sequential Spectrum
+
+| Condition | Pong at 2M | Dead Neurons at 2M |
+|---|---|---|
+| Freeze all | **+9.4** | 0.881 |
+| Freeze conv | -14.0 | 0.836 |
+| No freeze | -20.8 | 0.867 |
+
 ### Key Findings
-1. **Freeze all = almost complete forgetting prevention** — Pong stays 7-10 throughout all 2M Breakout steps
-2. **Freeze conv = forgetting still happens** — Pong drops from 9.1 to -14 because fc_repr adapts away from Pong
-3. **The forgetting mechanism is in fc_repr, not conv** — freezing conv alone is insufficient, forgetting happens at the representation layer
-4. **Complete spectrum confirmed:**
-   - Freeze all → Pong stays ~9 (forgetting prevented)
-   - Freeze conv → Pong drops to -14 (partial forgetting)
-   - No freeze → Pong drops to -21 (complete forgetting, immediate)
+1. Freeze all = forgetting almost completely prevented (Pong stays 7-10 throughout)
+2. Freeze conv = forgetting still happens — fc_repr adapts and destroys Pong decision pathway
+3. **Forgetting is localised to fc_repr** — the exact layer CKA identified as game-specific
+4. CKA hierarchy is predictive, not just descriptive: the layer with lowest CKA (fc_repr = 0.09) is where forgetting propagates
 
 ### Status
-✅ Complete. Both conditions done. Plotting pending.
+✅ Complete. Plots in report v3.
 
 ---
 
-## Experiment 7 — Interleaved Training
+## Experiment 7 — Interleaved Training (v1 — FLAWED, for reference only)
 
-### Design
-Single DQN agent with shared backbone and two output heads alternates Pong/Breakout episode by episode.
+### Design (broken)
+Episode-level alternation: 1 Pong episode then 1 Breakout episode.
 
-Architecture:
-- Shared: conv + fc_repr (512-dim)
-- Pong head: fc_out_pong (512 → 6)
-- Breakout head: fc_out_breakout (512 → 4)
-- Separate replay buffers per game
-- Gradients from both games flow back through shared backbone
-- 1M steps per game = 2M total
-- Trained from scratch (not from Pong pre-training)
+### Why it failed
+Pong episodes ~200 steps, Breakout with EpisodicLife ~10 steps. Created ~20:1 gradient imbalance. By 1M total steps: 954k Pong steps, only 46k Breakout steps. Not proper interleaving.
 
-Metrics every 100k total steps:
-- Pong reward (last 10 episodes)
-- Breakout reward (last 10 episodes)
-- Dead neurons
-- Cross-game CKA (shared backbone representations — high = general, low = specialised)
+### Results
+Pong: -21 throughout. Breakout: 0-1.2 throughout. Dead neurons: 95%. Both tasks failed.
 
 ### Status
-🔄 Currently running in tmux. ~6 hours remaining.
+❌ Flawed design. Results discarded. Rerun with v2.
+
+---
+
+## Experiment 8 — Interleaved Training (v2 — Step-Level Alternation)
+
+### Design
+Step-level alternation: switch active game every 1,000 steps regardless of episode boundaries. Both games get exactly 1M steps = perfectly equal gradient contribution. Shared backbone (conv + fc_repr), two output heads. Trains from scratch. Measures CKA drift vs original Pong baseline every 100k total steps.
+
+### Results
+
+| Total Steps | Pong Steps | Breakout Steps | Pong Reward | Breakout Reward | Dead Neurons | CKA Drift |
+|---|---|---|---|---|---|---|
+| 0 | 0 | 0 | 0.0 | 0.0 | 0.47 | 0.015 |
+| 200k | 100k | 100k | -20.9 | 1.0 | 0.87 | 0.008 |
+| 500k | 250k | 250k | -20.9 | 0.4 | 0.71 | 0.009 |
+| 1M | 500k | 500k | -21.0 | 0.2 | 0.86 | 0.007 |
+| 2M | 1M | 1M | **-21.0** | **0.4** | **0.92** | 0.011 |
+
+### Key Findings
+1. Even with correct step-level alternation, Pong never learned (stuck at -21 throughout)
+2. Breakout barely learned (0.4 final reward vs 3.86 from scratch on 5M steps)
+3. Dead neurons reached 92% — conflicting gradients from two games cause capacity collapse
+4. CKA drift near zero — backbone never moved far from Pong init but also never converged usefully
+5. Interleaved training is the WORST outcome: sequential at least learns Breakout (3.86), interleaved learns neither task
+6. This is not a bug — it reflects the fundamental difficulty of multi-task gradient interference with a shared backbone
+
+### Comparison of all conditions
+
+| Condition | Pong Final | Breakout Final | Dead Neurons |
+|---|---|---|---|
+| Scratch Breakout | N/A | 3.86 | — |
+| Sequential no freeze | -20.8 | ~3.5 | 0.87 |
+| Sequential freeze conv | -14.0 | ~2.5 | 0.84 |
+| Sequential freeze all | +9.4 | very limited | 0.88 |
+| Interleaved v2 | -21.0 | 0.4 | 0.92 |
+
+### Status
+✅ Complete. Results ready for plotting and report update.
 
 ---
 
@@ -298,39 +314,38 @@ Metrics every 100k total steps:
 
 | Bug | Impact | Fix | Date |
 |---|---|---|---|
-| CKA script used different game frames per agent | All CKA values ~0, completely wrong | Collect shared Pong frames, run all networks on same inputs | May 2026 |
-| Sequential freeze_conv: fc_repr randomly reinitialised | Pong eval started at -21, experiment meaningless | Load fc_repr from Pong in all sequential conditions | June 2026 |
-| Interleaved training: batch["states"] dict access on NamedTuple | Script crashed at first learn() call | Changed to batch.states attribute access | June 6, 2026 |
-| Saliency maps pixelated and noisy | Low quality figures | Bilinear interpolation, Gaussian smoothing, inferno colormap, higher DPI | May 2026 |
-| n_envs > 1 in training | Overhead not worth it | Reverted to n_envs=1 | May 2026 |
+| CKA script used different game frames per agent | All CKA values ~0, meaningless | Collect shared Pong frames, run all networks on same inputs | May 2026 |
+| Sequential freeze_conv: fc_repr randomly reinitialised | Pong eval started at -21, experiment meaningless | Always load fc_repr from Pong in fixed_sequential.py | June 2026 |
+| Interleaved v1: episode-level alternation | 20:1 gradient imbalance, both tasks failed | Step-level alternation every 1000 steps in v2 | June 7, 2026 |
+| Interleaved: batch["states"] dict access on NamedTuple | Script crashed at first learn() call | Changed to batch.states attribute access | June 6, 2026 |
+| Interleaved v2: collect_repr called AtariCNN with game= kwarg | Crash on reference model | Separate collect_repr_standard for standard AtariCNN | June 7, 2026 |
+| Saliency maps pixelated and noisy | Low quality figures | Bilinear interpolation, Gaussian smoothing, inferno colormap | May 2026 |
 
 ---
 
 ## Report Versions
 
-| Version | File | Status | What's in it |
+| Version | File | Status | Contents |
 |---|---|---|---|
 | v1 | latex/main.tex | Original | Baseline 4-agent study |
-| v2 | latex/main-v2.tex | Current, pushed to GitHub | + CKA (fixed), mix-and-match, backbone, em-dashes removed |
-| v3 | Not yet written | Pending after interleaved finishes | + Sequential (all conditions), interleaved results |
+| v2 | latex/main-v2.tex | Pushed | + CKA (fixed), mix-and-match, backbone, em-dashes removed |
+| v3 | latex/main-v3.tex | Pushed, interleaved pending | + Sequential (all conditions), interleaved noted as ongoing |
+| v4 | Not yet written | Pending | + Interleaved v2 results, final forgetting curves |
 
 ---
 
-## Complete Pending To-Do List
+## Pending To-Do List
 
-### Immediate (before professor meeting)
-- [ ] Wait for interleaved training to finish (~6 hours)
-- [ ] Write plotting scripts for:
-  - Sequential forgetting curves (all 4 conditions: no freeze, freeze all, freeze conv, interleaved)
-  - Interleaved reward curves (Pong + Breakout simultaneously)
-  - Cross-game CKA over interleaved training
-- [ ] Write report v3 with all new results
-- [ ] Update AUDIT.md with interleaved results
+### Immediate
+- [ ] Update plot_forgetting_curves.py to add interleaved v2 Pong reward line
+- [ ] Regenerate forgetting_curves.png with all 4 conditions
+- [ ] Write report v4 with interleaved v2 results and final discussion
+- [ ] Update notes/12_status.md and notes/09_key_findings.md
 - [ ] Commit and push everything
 
-### Future iterations (after meeting)
+### Future (after professor meeting)
 - [ ] PPO — design then implement
-- [ ] Multi-seed (deprioritised — too time-consuming)
+- [ ] Multi-seed (deprioritised)
 
 ---
 
@@ -338,13 +353,15 @@ Metrics every 100k total steps:
 
 | Decision | Reason |
 |---|---|
-| Single seed (42) | Time constraint — multi-seed takes too long |
-| 100k replay buffer (not 1M) | Memory constraint on GCP VM |
-| 2M steps for sequential experiments | Enough to see full forgetting curve |
+| Single seed (42) | Time constraint |
+| 100k replay buffer | Memory constraint on GCP VM |
+| 2M steps for sequential | Enough to see full forgetting curve |
 | Shared Pong frames for CKA | CKA requires same inputs — original code used different game frames |
-| Random actions for frame collection | Neutral probe, not biased to any agent's policy |
+| Random actions for frame collection | Neutral probe not biased to any agent's policy |
 | Interleaved starts from scratch | Clean test of interleaving alone, no pre-training confound |
-| Separate replay buffers per game (interleaved) | Keeps game experience separate, cleaner gradient signal |
+| Step-level alternation (switch_freq=1000) | Equal gradient signal regardless of episode length asymmetry |
+| Separate replay buffers per game | Keeps game experience separate, cleaner gradient signal |
+| Epsilon decays over 200k steps in interleaved | Longer decay for 2M total training with two simultaneous tasks |
 
 ---
 
@@ -355,48 +372,51 @@ Metrics every 100k total steps:
 | train.py | Single-agent training |
 | run_all.py | Run all 4 baseline agents |
 | models/cnn.py | AtariCNN (standard single head) |
-| models/cnn_two_head.py | AtariCNNTwoHead (shared backbone, two heads) |
+| models/cnn_two_head.py | AtariCNNTwoHead (shared backbone, two output heads) |
 | agents/dqn.py | DQN agent |
-| agents/ddqn.py | DDQN agent (inherits DQN, overrides learn) |
+| agents/ddqn.py | DDQN agent |
 | envs/wrappers.py | Atari preprocessing pipeline |
 | utils/replay_buffer.py | Experience replay (NamedTuple batch) |
 | analysis/extract_representations.py | Collect 512-dim vectors from checkpoints |
 | analysis/tsne_visualisation.py | All t-SNE figures |
 | analysis/activation_analysis.py | Training curves, Q-values, dead neurons, cosine similarity |
-| analysis/saliency_maps.py | Grad-CAM saliency (improved clarity) |
+| analysis/saliency_maps.py | Grad-CAM saliency (improved) |
 | analysis/layer_similarity.py | CKA layer-wise analysis (bug fixed) |
 | analysis/plot_backbone_comparison.py | Backbone learning curve comparison |
-| analysis/plot_forgetting_curves.py | Sequential forgetting curve plots |
+| analysis/plot_forgetting_curves.py | Sequential forgetting curves (needs interleaved v2 added) |
 | experiments/mix_and_match_eval.py | Zero-shot chimera evaluation |
 | experiments/train_backbone.py | Frozen/fine-tune backbone (5M steps) |
-| experiments/sequential_training.py | Sequential forgetting (original, freeze_none complete, freeze_conv broken) |
-| experiments/fixed_sequential.py | Fixed sequential (freeze_all and freeze_conv corrected) |
-| experiments/interleaved_training.py | Interleaved training with two-head network |
+| experiments/sequential_training.py | Sequential no-freeze (Experiment 5) |
+| experiments/fixed_sequential.py | Fixed sequential freeze_all and freeze_conv (Experiment 6) |
+| experiments/interleaved_training.py | Interleaved v2 step-level (Experiment 8) |
 | latex/main.tex | Report v1 |
-| latex/main-v2.tex | Report v2 (current) |
-| notes/ | All Obsidian notes |
+| latex/main-v2.tex | Report v2 |
+| latex/main-v3.tex | Report v3 (current best) |
 | notes/AUDIT.md | This file |
-| results/checkpoints/ | All model weights (.pt files, NOT in git) |
-| results/plots/ | All figures (.png, in git) |
-| results/logs/ | Training CSVs including forgetting metrics |
+| results/logs/*_forgetting.csv | Sequential metrics |
+| results/logs/dqn_interleaved_v2_*_metrics.csv | Interleaved v2 metrics |
 
 ---
 
-## Narrative Summary (the story so far)
+## Complete Narrative (the full story)
 
-1. **Baseline:** Game content shapes representations more than algorithm. DDQN produces better quality representations despite similar scores. Performance and representation quality are decoupled.
+**Chapter 1 — Representation Analysis:**
+Game content shapes representations more than algorithm. DDQN produces better quality representations despite similar scores. Performance and representation quality are decoupled.
 
-2. **CKA:** Early conv layers (conv1/2 CKA ~0.9) generalise across games. fc_repr diverges almost completely (CKA ~0.09). The boundary between shared visual processing and game-specific encoding is at the conv→fc transition.
+**Chapter 2 — Layer Hierarchy (CKA):**
+Early conv layers (conv1/2 CKA ~0.9) generalise across games. fc_repr diverges almost completely (CKA ~0.09). The boundary between shared visual processing and game-specific encoding is at the conv→fc transition.
 
-3. **Zero-shot transfer:** High CKA does not mean features are interchangeable. Swapping conv layers between agents fails completely — the conv-fc interface is tightly co-adapted.
+**Chapter 3 — Transfer (Zero-Shot + Backbone):**
+High CKA ≠ functional compatibility. Zero-shot conv transplantation fails completely. Frozen backbone hurts. Full fine-tune from Pong helps slightly as a warm start.
 
-4. **Backbone training:** Frozen Pong conv hurts Breakout learning. Full fine-tune from Pong helps slightly. Pre-training only useful with full adaptation.
+**Chapter 4 — Sequential Forgetting:**
+Forgetting is immediate and total within 200k steps. Dead neurons increase progressively — capacity loss is the mechanism. Forgetting is localised to fc_repr, exactly the layer CKA predicted.
 
-5. **Sequential training:** Forgetting is immediate and total (Pong → -21 by 200k steps). Dead neurons increase steadily — capacity loss is the mechanism. Forgetting is confirmed as happening at the fc_repr level, not the conv level.
+**Chapter 5 — Mitigation Spectrum:**
+Freeze all → Pong stays ~9.4 (forgetting prevented). Freeze conv → Pong drops to -14 (fc_repr still forgets). No freeze → -21 (complete). The CKA hierarchy is not just descriptive — it predicts where intervention is needed.
 
-6. **Fixed sequential:** Freeze all → Pong stays ~9 throughout (forgetting prevented). Freeze conv → Pong drops to -14 (forgetting still happens at fc_repr). Complete spectrum: freeze all > freeze conv > no freeze.
-
-7. **Interleaved (ongoing):** Testing whether alternating episodes prevents forgetting while maintaining performance on both games.
+**Chapter 6 — Interleaved Training:**
+Both v1 (episode-level) and v2 (step-level) fail to learn either game. Conflicting gradients from two games cause 92% dead neurons and capacity collapse. Interleaved training is the worst outcome of all conditions — worse than sequential. Simple multi-task gradient mixing does not work; more principled approaches (EWC, continual backpropagation) are needed.
 
 ---
 
@@ -406,6 +426,6 @@ Metrics every 100k total steps:
 |---|---|---|
 | 26 May 2026 | Meeting | Asked for mix-and-match, layer freezing, interleaved training, PPO. Theme: continual learning. |
 | 2 June 2026 | Professor | Will read report, no meeting Tue 9 June, suggested meeting later that week. |
-| 2 June 2026 | Vinol | Sent report v2 PDF named representation_study_v2_vinol_tauro.pdf |
-| 3 June 2026 | Vinol | Teams message: "just sent email with updated report" |
-| 3 June 2026 | Vinol | Teams reply to professor: "happy to meet later this week, will keep working on experiments" |
+| 2 June 2026 | Vinol | Sent report v2 PDF: representation_study_v2_vinol_tauro.pdf |
+| 3 June 2026 | Vinol | Teams: "just sent email with updated report" |
+| 3 June 2026 | Vinol | Teams reply: "happy to meet later this week, will keep working on experiments" |
