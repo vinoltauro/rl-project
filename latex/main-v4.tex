@@ -189,8 +189,10 @@ collapse, but not its sole cause.
 \subsection{Catastrophic Forgetting and Continual Learning}
 
 Catastrophic forgetting \cite{mccloskey1989catastrophic} refers to the abrupt loss of
-previously learned information when a neural network is trained on a new task. In deep RL,
-the problem is compounded by non-stationarity: unlike supervised learning, where the data
+previously learned information when a neural network is trained on a new task. A thorough
+treatment of RL foundations and the Bellman optimality conditions underlying these algorithms
+is given in Sutton and Barto \cite{sutton2018reinforcement}. In deep RL, the forgetting
+problem is compounded by non-stationarity: unlike supervised learning, where the data
 distribution is fixed, value-based RL targets shift continuously as the policy improves,
 creating a more volatile gradient landscape throughout training. Igl et al.\ \cite{igl2021transient}
 showed that early exposure to this non-stationary signal leaves a lasting geometric imprint
@@ -269,9 +271,10 @@ with game (Pong, Breakout), as summarised in Table~\ref{tab:factorial}:
 
 \subsection{Preprocessing and Architecture}
 
-Raw 210$\times$160 RGB frames are transformed through the standard DeepMind preprocessing
-stack \cite{mnih2015human}: no-op reset, frame skip (4), episodic life, grayscale and
-resize to 84$\times$84, reward clipping to $\{-1, 0, +1\}$, and frame stacking (4 frames).
+Raw 210$\times$160 RGB frames from the Arcade Learning Environment \cite{bellemare2013arcade}
+are transformed through the standard DeepMind preprocessing stack \cite{mnih2015human}:
+no-op reset, frame skip (4), episodic life, grayscale and resize to 84$\times$84, reward
+clipping to $\{-1, 0, +1\}$, and frame stacking (4 frames).
 
 Hyperparameters are listed in Table~\ref{tab:hyperparams}. Both agents share the CNN from
 Mnih et al.: three convolutional layers (32 filters, 8$\times$8, stride 4; 64 filters,
@@ -926,9 +929,12 @@ giving it greater capacity to absorb new tasks without catastrophic interference
 
 \subsection{Limitations}
 
-\textbf{Single random seed.} All experiments use seed 42. Running multiple seeds would be
-needed to confirm the observed patterns are robust rather than initialisation-specific, and
-is the most significant methodological limitation of this study.
+\textbf{Single random seed.} All experiments use seed 42. Henderson et al.\
+\cite{henderson2018deep} demonstrated that deep RL results can vary substantially across
+random seeds, and running three to five seeds is considered standard practice for reliable
+conclusions. This is the most significant methodological limitation of this study; all
+reported results should be treated as case study observations pending multi-seed
+validation.
 
 \textbf{Reduced replay buffer.} The 100,000-transition buffer is one-tenth of the 1M used
 in the original DQN paper \cite{mnih2015human}. Both algorithms use the same buffer, so the
