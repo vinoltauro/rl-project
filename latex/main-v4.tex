@@ -134,42 +134,46 @@ Figure~\ref{fig:overview} illustrates how the four experimental phases connect.
 
 \begin{figure}[H]
 \centering
-\resizebox{\linewidth}{!}{%
-\begin{tikzpicture}[
-    phase/.style={rectangle, draw=tcdBlue, fill=tcdBlue!12, rounded corners=6pt,
-                  minimum width=3.4cm, minimum height=1.5cm, text centered,
-                  font=\small\bfseries, text width=3.2cm, line width=1.2pt},
-    finding/.style={rectangle, draw=gray!50, fill=gray!6, rounded corners=4pt,
-                    minimum width=3.4cm, minimum height=0.8cm, text centered,
-                    font=\footnotesize, text width=3.2cm},
-    arr/.style={-Stealth, line width=1.2pt, tcdBlue},
-    darr/.style={dashed, gray!60, line width=0.7pt},
-    node distance=0.8cm and 0.9cm
+\begin{tikzpicture}[transform shape, scale=0.9,
+    phase/.style={
+        rectangle, draw=tcdBlue, fill=tcdBlue!12, rounded corners=5pt,
+        minimum width=3.2cm, minimum height=1.4cm, text centered,
+        text width=3.0cm, line width=1.2pt, font=\small
+    },
+    finding/.style={
+        rectangle, draw=gray!50, fill=gray!7, rounded corners=3pt,
+        minimum width=3.2cm, minimum height=0.85cm, text centered,
+        text width=3.0cm, font=\footnotesize
+    },
+    arr/.style={-{Stealth[length=6pt]}, thick, tcdBlue},
+    darr/.style={dashed, thick, gray!50}
 ]
-\node[phase] (p1) {Phase 1\\[3pt]\normalfont Baseline 2$\times$2\\Representation Study};
-\node[phase, right=of p1] (p2) {Phase 2\\[3pt]\normalfont Cross-Game\\Transfer};
-\node[phase, right=of p2] (p3) {Phase 3\\[3pt]\normalfont Sequential\\Forgetting};
-\node[phase, right=of p3] (p4) {Phase 4\\[3pt]\normalfont Interleaved\\Training};
 
-\node[finding, below=0.45cm of p1] (f1) {CKA: conv general,\\fc\_repr game-specific};
-\node[finding, below=0.45cm of p2] (f2) {High CKA $\neq$\\functional compatibility};
-\node[finding, below=0.45cm of p3] (f3) {Forgetting localised\\to fc\_repr};
-\node[finding, below=0.45cm of p4] (f4) {92\% dead neurons,\\neither task learned};
+\node[phase] (p1) at (0,0)   {\textbf{Phase 1}\\[4pt]Baseline 2$\times$2\\Representation Study};
+\node[phase] (p2) at (4,0)   {\textbf{Phase 2}\\[4pt]Cross-Game\\Transfer};
+\node[phase] (p3) at (8,0)   {\textbf{Phase 3}\\[4pt]Sequential\\Forgetting};
+\node[phase] (p4) at (12,0)  {\textbf{Phase 4}\\[4pt]Interleaved\\Training};
 
-\draw[arr] (p1) -- (p2) node[midway, above, font=\scriptsize\color{tcdBlue}]{motivates};
-\draw[arr] (p2) -- (p3) node[midway, above, font=\scriptsize\color{tcdBlue}]{motivates};
-\draw[arr] (p3) -- (p4) node[midway, above, font=\scriptsize\color{tcdBlue}]{motivates};
-\draw[darr] (p1) -- (f1);
-\draw[darr] (p2) -- (f2);
-\draw[darr] (p3) -- (f3);
-\draw[darr] (p4) -- (f4);
+\node[finding] (f1) at (0,-2.2)  {CKA: conv general,\\fc\_repr specific};
+\node[finding] (f2) at (4,-2.2)  {High CKA $\neq$\\functional reuse};
+\node[finding] (f3) at (8,-2.2)  {Forgetting via\\fc\_repr};
+\node[finding] (f4) at (12,-2.2) {92\% dead neurons,\\both tasks fail};
+
+\draw[arr] (p1) -- node[above, font=\scriptsize, text=tcdBlue]{motivates} (p2);
+\draw[arr] (p2) -- node[above, font=\scriptsize, text=tcdBlue]{motivates} (p3);
+\draw[arr] (p3) -- node[above, font=\scriptsize, text=tcdBlue]{motivates} (p4);
+
+\draw[darr] (p1.south) -- (f1.north);
+\draw[darr] (p2.south) -- (f2.north);
+\draw[darr] (p3.south) -- (f3.north);
+\draw[darr] (p4.south) -- (f4.north);
+
 \end{tikzpicture}
-}% end resizebox
 \caption{Four-phase experimental design. Each phase is motivated by the key finding of
-the previous one. CKA analysis (Phase 1) establishes which layers are game-specific;
-transfer experiments (Phase 2) test whether geometric similarity implies functional
-reusability; sequential forgetting experiments (Phase 3) confirm where forgetting
-propagates; and interleaved training (Phase 4) tests whether joint training avoids it.}
+the previous one. CKA analysis (Phase~1) establishes which layers are game-specific;
+transfer experiments (Phase~2) test whether geometric similarity implies functional
+reusability; sequential forgetting experiments (Phase~3) confirm where forgetting
+propagates; and interleaved training (Phase~4) tests whether joint training avoids it.}
 \label{fig:overview}
 \end{figure}
 
@@ -333,89 +337,56 @@ Figure~\ref{fig:architecture}.
 
 \begin{figure}[H]
 \centering
-\resizebox{\linewidth}{!}{%
 \begin{tikzpicture}[
-    node distance=0.5cm,
-    layer/.style={
-        rectangle, draw=gray!60, fill=white, rounded corners=4pt,
-        minimum width=2.0cm, minimum height=1.6cm,
-        text centered, font=\small, line width=0.6pt
+    transform shape, scale=0.88,
+    every node/.style={font=\small},
+    box/.style={
+        rectangle, rounded corners=4pt, draw, thick,
+        minimum width=1.85cm, minimum height=1.55cm, text centered
     },
-    convlayer/.style={layer, fill=tcdBlue!12, draw=tcdBlue!60},
-    fclayer/.style={layer, fill=orange!12, draw=orange!60},
-    reprlayer/.style={layer, fill=green!15, draw=green!60, line width=1.4pt},
-    outlayer/.style={layer, fill=red!10, draw=red!50},
-    inputlayer/.style={layer, fill=gray!10, draw=gray!50},
-    arr/.style={-Stealth, line width=0.9pt, gray!70},
-    label/.style={font=\scriptsize\color{gray!80}, below=0.08cm}
+    arr/.style={-{Stealth[length=5pt]}, thick, gray!60}
 ]
 
-%% Nodes
-\node[inputlayer] (input) {%
-    \textbf{Input}\\[2pt]
-    \scriptsize 4$\times$84$\times$84};
+%% ---- Layer nodes ----
+\node[box, fill=gray!12,     draw=gray!50]  (inp)   at (0,0)    {\textbf{Input}\\[3pt]\scriptsize$4\!\times\!84\!\times\!84$};
+\node[box, fill=tcdBlue!15,  draw=tcdBlue!50] (c1) at (2.3,0)  {\textbf{Conv1}\\[3pt]\scriptsize$32$, $8\!\times\!8$, s4\\[1pt]\scriptsize ReLU};
+\node[box, fill=tcdBlue!15,  draw=tcdBlue!50] (c2) at (4.6,0)  {\textbf{Conv2}\\[3pt]\scriptsize$64$, $4\!\times\!4$, s2\\[1pt]\scriptsize ReLU};
+\node[box, fill=tcdBlue!15,  draw=tcdBlue!50] (c3) at (6.9,0)  {\textbf{Conv3}\\[3pt]\scriptsize$64$, $3\!\times\!3$, s1\\[1pt]\scriptsize ReLU};
+\node[box, fill=orange!12,   draw=orange!50] (fl)  at (9.2,0)  {\textbf{Flatten}\\[3pt]\scriptsize$3{,}136$};
+\node[box, fill=green!18,    draw=green!55, ultra thick] (fc) at (11.5,0) {\textbf{fc\_repr}\\[3pt]\scriptsize$512$-dim\\[1pt]\scriptsize ReLU};
+\node[box, fill=red!10,      draw=red!40]   (out) at (13.8,0)  {\textbf{fc\_out}\\[3pt]\scriptsize$n$ actions\\[1pt]\scriptsize Q-values};
 
-\node[convlayer, right=of input] (conv1) {%
-    \textbf{Conv1}\\[2pt]
-    \scriptsize 32, 8$\times$8, s4\\
-    \scriptsize ReLU};
+%% ---- Arrows ----
+\draw[arr] (inp) -- (c1);
+\draw[arr] (c1)  -- (c2);
+\draw[arr] (c2)  -- (c3);
+\draw[arr] (c3)  -- (fl);
+\draw[arr] (fl)  -- (fc);
+\draw[arr] (fc)  -- (out);
 
-\node[convlayer, right=of conv1] (conv2) {%
-    \textbf{Conv2}\\[2pt]
-    \scriptsize 64, 4$\times$4, s2\\
-    \scriptsize ReLU};
+%% ---- Output sizes below conv nodes ----
+\node[font=\scriptsize, text=gray!70] at (2.3,-1.2)  {$32\!\times\!20\!\times\!20$};
+\node[font=\scriptsize, text=gray!70] at (4.6,-1.2)  {$64\!\times\!9\!\times\!9$};
+\node[font=\scriptsize, text=gray!70] at (6.9,-1.2)  {$64\!\times\!7\!\times\!7$};
 
-\node[convlayer, right=of conv2] (conv3) {%
-    \textbf{Conv3}\\[2pt]
-    \scriptsize 64, 3$\times$3, s1\\
-    \scriptsize ReLU};
+%% ---- Forward hook annotation ----
+\draw[dashed, tcdBlue, thick] (fc.north) -- ++(0, 0.8)
+    node[above, font=\scriptsize\bfseries, text=tcdBlue]
+    {\textrightarrow\ forward hook (all analysis)};
 
-\node[fclayer, right=of conv3] (flat) {%
-    \textbf{Flatten}\\[2pt]
-    \scriptsize 3{,}136};
-
-\node[reprlayer, right=of flat] (repr) {%
-    \textbf{fc\_repr}\\[2pt]
-    \scriptsize 512-dim\\
-    \scriptsize ReLU};
-
-\node[outlayer, right=of repr] (out) {%
-    \textbf{fc\_out}\\[2pt]
-    \scriptsize $n$ actions\\
-    \scriptsize Q-values};
-
-%% Arrows
-\foreach \from/\to in {input/conv1, conv1/conv2, conv2/conv3, conv3/flat, flat/repr, repr/out}
-    \draw[arr] (\from) -- (\to);
-
-%% Output size annotations below nodes
-\node[label] at (conv1.south) {32$\times$20$\times$20};
-\node[label] at (conv2.south) {64$\times$9$\times$9};
-\node[label] at (conv3.south) {64$\times$7$\times$7};
-
-%% Forward hook annotation above fc_repr
-\draw[dashed, tcdBlue!70, line width=0.8pt]
-    (repr.north) -- ++(0, 0.5)
-    node[above, font=\scriptsize\bfseries\color{tcdBlue}]
-        {$\hookleftarrow$ forward hook};
-
-%% Convolutional backbone brace
-\begin{scope}[on background layer]
-    \node[draw=tcdBlue!30, fill=tcdBlue!4, rounded corners=5pt,
-          fit=(conv1)(conv3), inner sep=5pt] (backbone) {};
-\end{scope}
-\node[font=\scriptsize\color{tcdBlue!70}, above=0.05cm of backbone]
-    {Convolutional backbone (shared, 1--3)};
+%% ---- Backbone bracket ----
+\draw[tcdBlue!40, thick, rounded corners=3pt]
+    (1.25, -0.9) rectangle (8.0, 0.9);
+\node[font=\scriptsize, text=tcdBlue!60] at (4.6, -1.5)
+    {Convolutional backbone};
 
 \end{tikzpicture}
-}% end resizebox
-\caption{CNN architecture shared by DQN and DDQN across all experiments. Blue nodes form
-the convolutional backbone; the green \texttt{fc\_repr} node is the 512-dimensional
-representation layer where all analysis is performed. A PyTorch forward hook captures
-activations here after every forward pass. The \texttt{fc\_out} head is game-specific
-(Pong: 6 actions; Breakout: 4 actions). Approximately 95\% of the total $\sim$1.7M
-parameters reside in \texttt{fc\_repr}. Output feature map sizes are shown below each
-convolutional layer.}
+\caption{CNN architecture shared by all agents. The three blue convolutional layers form
+the backbone. The green \texttt{fc\_repr} layer (512-dim, marked with a forward hook) is
+where all representation analysis is performed. The \texttt{fc\_out} head is game-specific
+(Pong: 6 actions; Breakout: 4 actions). Feature map sizes after each conv layer are shown
+below the nodes. Approximately 95\% of the ${\sim}1.7$M total parameters reside in
+\texttt{fc\_repr}.}
 \label{fig:architecture}
 \end{figure}
 
