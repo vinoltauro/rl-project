@@ -64,7 +64,10 @@ is learned, Pong remains stuck at $-21$ throughout, Breakout peaks at 0.4 (versu
 from scratch), and the dead neuron fraction reaches 92\%. These results suggest that
 naive multi-task gradient mixing causes representational capacity collapse, and that
 simply equalising gradient contribution across tasks does not resolve the underlying
-interference problem.
+interference problem. The central contribution is a causal link between the CKA layer
+hierarchy and the forgetting mechanism: the layer CKA identifies as most game-specific
+is precisely the layer through which forgetting propagates, establishing CKA analysis as
+a principled guide for continual learning interventions rather than a post-hoc descriptor.
 \end{abstract}
 
 \tableofcontents
@@ -445,9 +448,16 @@ algorithm used is secondary.
     \label{fig:game_effect}
 \end{figure}
 
-Within each game, DDQN produces noticeably tighter cluster geometry with lower intra-cluster
-variance (Figure~\ref{fig:algo_effect}). This is consistent with DDQN's more stable gradient
-signal producing more organised state groupings in the representation space.
+Within each game, DDQN produces tighter cluster geometry with lower intra-cluster spread
+(Figure~\ref{fig:algo_effect}). To quantify this, we compute the mean Euclidean distance
+from each agent's representation centroid over 1,000 sampled states. DDQN/Pong has a mean
+centroid distance of 4.65 (DQN/Pong: 5.07); DDQN/Breakout has 7.42 (DQN/Breakout: 7.60).
+The gap is most pronounced in cosine distance: DDQN/Breakout shows a mean intra-cluster
+cosine distance of 0.328 versus 0.416 for DQN/Breakout, a 21\% reduction. On Pong the
+cosine gap is smaller and in the opposite direction (DQN/Pong: 0.231, DDQN/Pong: 0.280),
+suggesting DDQN's tighter geometry is more consistent on the harder game. Game separation
+silhouette scores are similar across algorithms (DQN: 0.49, DDQN: 0.50), confirming that
+the game effect dominates equally for both.
 
 \begin{figure}[H]
     \centering
@@ -541,10 +551,23 @@ and~\ref{fig:saliency_breakout}).
 Dead neurons (those firing in fewer than 5\% of game states) are consistently higher under
 DQN than DDQN across both games (Figure~\ref{fig:dead_neurons}). This is consistent with
 DQN's higher-variance gradient signal accelerating the saturation of ReLU units, as
-characterised by Sokar et al.\ \cite{sokar2023dormant}. Cross-game cosine similarity is
-non-trivial for both algorithms, with DDQN showing marginally higher alignment
-(Figure~\ref{fig:cosine}), suggesting its representations preserve more of the shared
-visual content that Pong and Breakout genuinely have in common.
+characterised by Sokar et al.\ \cite{sokar2023dormant}.
+
+A notable feature of Table~\ref{tab:sequential} is that the successfully trained Pong agent
+already has a dead neuron fraction of approximately 0.879 before any Breakout training begins.
+This high baseline is itself a finding consistent with the literature: Sokar et al.\ showed
+that single-task DQN agents routinely accumulate large dormant fractions during training as a
+consequence of non-stationary TD targets. Importantly, the agent still achieves a mean reward
+of $+9.1$ despite only roughly 63 of its 512 fc\_repr neurons being meaningfully active, which
+suggests the architecture is over-parameterised relative to what Pong requires, and that the
+remaining active neurons encode a sufficiently rich policy. This baseline context matters for
+interpreting the capacity collapse observed in later experiments: the capacity available to
+encode a second game is not 512 neurons but far fewer, making gradient interference between
+two tasks substantially more acute than the raw architecture size would imply.
+
+Cross-game cosine similarity is non-trivial for both algorithms, with DDQN showing marginally
+higher alignment (Figure~\ref{fig:cosine}), suggesting its representations preserve more of the
+shared visual content that Pong and Breakout genuinely have in common.
 
 \begin{figure}[H]
     \centering
@@ -701,6 +724,18 @@ Freezing both conv layers and fc\_repr preserves the full Pong policy pathway al
 completely. The result is that a network trained on only 2,052 parameters (the new Breakout
 output head) can begin learning Breakout while leaving Pong intact.
 
+A methodological note on the CKA drift values: the probe procedure collects representations
+by stepping through the Pong environment with random actions, but the action space random
+state is not fixed between evaluations. Successive evaluations therefore sample different
+state distributions, and CKA between two collections from the same frozen network falls
+below 1.0. The freeze-all values (0.035 to 0.065) lie within this measurement floor and
+should be read as consistent with zero structural change rather than as evidence of genuine
+representational drift. A more reliable implementation would fix the probe state set by
+collecting and saving frames once and reusing them across all evaluations. The no-freeze
+and freeze-conv drift values also start near zero for the same reason, meaning the CKA
+drift signal is largely masked for all conditions; Pong reward and dead neuron fraction
+are the more informative forgetting signals in these experiments.
+
 The connection to the CKA analysis is direct and clean. CKA identified fc\_repr as the
 layer with the sharpest cross-game divergence (CKA = 0.09). The sequential experiments
 confirm that this is also the layer through which forgetting propagates: when fc\_repr is
@@ -839,15 +874,21 @@ replay buffers, and separate output heads, the shared backbone cannot develop us
 representations for either game. The 92\% dead neuron fraction is the most striking result
 in the study.
 
-The theoretical framework of Elhage et al.\ \cite{elhage2022superposition} offers a precise
-explanation. When a neural network with limited representational capacity is required to
-encode two distinct, dense feature sets, it is forced past a phase change threshold into
-superposition: features from both tasks compete for the same dimensions in fc\_repr. Because
-Pong and Breakout features are not mutually sparse, the interference this creates within the
-512-dimensional space is irresolvable. The network responds by saturating its ReLU units to
-silence the interference, driving the dead neuron fraction to 92\%. The network is not
-failing to learn because it lacks enough training steps; it is actively pruning itself to
-eliminate the noise created by conflicting gradient objectives.
+One interpretive framework for this result is the superposition theory of Elhage et al.\
+\cite{elhage2022superposition}. When a network with limited representational capacity is
+required to encode two distinct, dense feature sets, it can be forced past a phase change
+threshold: features from both tasks compete for the same subspace, and ReLU saturation
+becomes the path of least resistance for gradient descent to silence the resulting
+interference. Under this view, the 92\% dead neuron fraction is not a side effect of failed
+learning but an emergent consequence of the network minimising a loss that cannot be
+simultaneously reduced on both tasks with the available capacity. It is important to note
+that this paper does not directly measure superposition or feature overlap; the framework is
+a plausible post-hoc interpretation consistent with Elhage et al.'s predictions, not an
+independently verified finding. Directly testing it would require probing individual neurons
+for polysemanticity, which is left for future work. What the data does establish directly is
+that the two tasks produce conflicting gradient directions, that capacity (as measured by
+active neurons) collapses to near zero, and that neither task is learned — a pattern
+consistent with, but not proof of, superposition-driven collapse.
 
 It is important to note, as Lyle et al.\ \cite{lyle2023plasticity} demonstrate, that dead
 neurons should be understood as a symptom of this collapse rather than its root cause.
