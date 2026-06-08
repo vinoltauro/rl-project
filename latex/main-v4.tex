@@ -134,38 +134,42 @@ Figure~\ref{fig:overview} illustrates how the four experimental phases connect.
 
 \begin{figure}[H]
 \centering
+\resizebox{\linewidth}{!}{%
 \begin{tikzpicture}[
-    phase/.style={rectangle, draw=tcdBlue, fill=tcdBlue!10, rounded corners=5pt,
-                  minimum width=3.2cm, minimum height=1.4cm, text centered,
-                  font=\small, text width=3cm},
-    finding/.style={rectangle, draw=gray!60, fill=gray!8, rounded corners=3pt,
-                    minimum width=3.2cm, minimum height=0.7cm, text centered,
-                    font=\footnotesize, text width=3cm},
-    arr/.style={-Stealth, thick, tcdBlue},
-    node distance=0.6cm and 0.7cm
+    phase/.style={rectangle, draw=tcdBlue, fill=tcdBlue!12, rounded corners=6pt,
+                  minimum width=3.4cm, minimum height=1.5cm, text centered,
+                  font=\small\bfseries, text width=3.2cm, line width=1.2pt},
+    finding/.style={rectangle, draw=gray!50, fill=gray!6, rounded corners=4pt,
+                    minimum width=3.4cm, minimum height=0.8cm, text centered,
+                    font=\footnotesize, text width=3.2cm},
+    arr/.style={-Stealth, line width=1.2pt, tcdBlue},
+    darr/.style={dashed, gray!60, line width=0.7pt},
+    node distance=0.8cm and 0.9cm
 ]
-\node[phase] (p1) {\textbf{Phase 1}\\Baseline 2$\times$2\\Representation Study};
-\node[phase, right=of p1] (p2) {\textbf{Phase 2}\\Cross-Game\\Transfer};
-\node[phase, right=of p2] (p3) {\textbf{Phase 3}\\Sequential\\Forgetting};
-\node[phase, right=of p3] (p4) {\textbf{Phase 4}\\Interleaved\\Training};
+\node[phase] (p1) {Phase 1\\[3pt]\normalfont Baseline 2$\times$2\\Representation Study};
+\node[phase, right=of p1] (p2) {Phase 2\\[3pt]\normalfont Cross-Game\\Transfer};
+\node[phase, right=of p2] (p3) {Phase 3\\[3pt]\normalfont Sequential\\Forgetting};
+\node[phase, right=of p3] (p4) {Phase 4\\[3pt]\normalfont Interleaved\\Training};
 
-\node[finding, below=0.3cm of p1] (f1) {CKA: conv general,\\fc\_repr specific};
-\node[finding, below=0.3cm of p2] (f2) {Similarity $\neq$\\compatibility};
-\node[finding, below=0.3cm of p3] (f3) {Forgetting via\\fc\_repr};
-\node[finding, below=0.3cm of p4] (f4) {92\% dead neurons,\\both tasks fail};
+\node[finding, below=0.45cm of p1] (f1) {CKA: conv general,\\fc\_repr game-specific};
+\node[finding, below=0.45cm of p2] (f2) {High CKA $\neq$\\functional compatibility};
+\node[finding, below=0.45cm of p3] (f3) {Forgetting localised\\to fc\_repr};
+\node[finding, below=0.45cm of p4] (f4) {92\% dead neurons,\\neither task learned};
 
-\draw[arr] (p1) -- (p2);
-\draw[arr] (p2) -- (p3);
-\draw[arr] (p3) -- (p4);
-\draw[dashed, gray] (p1) -- (f1);
-\draw[dashed, gray] (p2) -- (f2);
-\draw[dashed, gray] (p3) -- (f3);
-\draw[dashed, gray] (p4) -- (f4);
+\draw[arr] (p1) -- (p2) node[midway, above, font=\scriptsize\color{tcdBlue}]{motivates};
+\draw[arr] (p2) -- (p3) node[midway, above, font=\scriptsize\color{tcdBlue}]{motivates};
+\draw[arr] (p3) -- (p4) node[midway, above, font=\scriptsize\color{tcdBlue}]{motivates};
+\draw[darr] (p1) -- (f1);
+\draw[darr] (p2) -- (f2);
+\draw[darr] (p3) -- (f3);
+\draw[darr] (p4) -- (f4);
 \end{tikzpicture}
-\caption{Four-phase experimental design. Each phase is motivated by the finding of the
-previous one: CKA establishes which layers are game-specific, transfer experiments test
-whether similarity implies reusability, sequential training confirms where forgetting
-propagates, and interleaved training tests whether joint training can avoid it.}
+}% end resizebox
+\caption{Four-phase experimental design. Each phase is motivated by the key finding of
+the previous one. CKA analysis (Phase 1) establishes which layers are game-specific;
+transfer experiments (Phase 2) test whether geometric similarity implies functional
+reusability; sequential forgetting experiments (Phase 3) confirm where forgetting
+propagates; and interleaved training (Phase 4) tests whether joint training avoids it.}
 \label{fig:overview}
 \end{figure}
 
@@ -329,48 +333,89 @@ Figure~\ref{fig:architecture}.
 
 \begin{figure}[H]
 \centering
+\resizebox{\linewidth}{!}{%
 \begin{tikzpicture}[
-    box/.style={rectangle, draw, rounded corners=3pt, minimum height=0.9cm,
-                text centered, font=\small},
-    inputbox/.style={box, fill=gray!15, minimum width=2cm},
-    convbox/.style={box, fill=tcdBlue!20, minimum width=2.6cm},
-    fcbox/.style={box, fill=orange!25, minimum width=2.6cm},
-    reprbox/.style={box, fill=green!25, minimum width=2.6cm, very thick},
-    outbox/.style={box, fill=red!20, minimum width=2.6cm},
-    arr/.style={-Stealth, thick},
-    node distance=0.45cm
+    node distance=0.5cm,
+    layer/.style={
+        rectangle, draw=gray!60, fill=white, rounded corners=4pt,
+        minimum width=2.0cm, minimum height=1.6cm,
+        text centered, font=\small, line width=0.6pt
+    },
+    convlayer/.style={layer, fill=tcdBlue!12, draw=tcdBlue!60},
+    fclayer/.style={layer, fill=orange!12, draw=orange!60},
+    reprlayer/.style={layer, fill=green!15, draw=green!60, line width=1.4pt},
+    outlayer/.style={layer, fill=red!10, draw=red!50},
+    inputlayer/.style={layer, fill=gray!10, draw=gray!50},
+    arr/.style={-Stealth, line width=0.9pt, gray!70},
+    label/.style={font=\scriptsize\color{gray!80}, below=0.08cm}
 ]
-\node[inputbox] (input) {Input\\(4, 84, 84)};
-\node[convbox, right=of input] (conv1) {Conv1\\32$\times$8$\times$8, s4\\ReLU};
-\node[convbox, right=of conv1] (conv2) {Conv2\\64$\times$4$\times$4, s2\\ReLU};
-\node[convbox, right=of conv2] (conv3) {Conv3\\64$\times$3$\times$3, s1\\ReLU};
-\node[fcbox, right=of conv3] (flat) {Flatten\\3,136};
-\node[reprbox, right=of flat] (repr) {\textbf{fc\_repr}\\512-dim\\ReLU};
-\node[outbox, right=of repr] (out) {fc\_out\\$n$ actions\\Q-values};
 
-\draw[arr] (input) -- (conv1);
-\draw[arr] (conv1) -- (conv2);
-\draw[arr] (conv2) -- (conv3);
-\draw[arr] (conv3) -- (flat);
-\draw[arr] (flat) -- (repr);
-\draw[arr] (repr) -- (out);
+%% Nodes
+\node[inputlayer] (input) {%
+    \textbf{Input}\\[2pt]
+    \scriptsize 4$\times$84$\times$84};
 
-% Hook annotation
-\draw[dashed, thick, tcdBlue] (repr.north) -- ++(0,0.55)
-    node[above, font=\footnotesize\color{tcdBlue}] {forward hook (all analysis here)};
+\node[convlayer, right=of input] (conv1) {%
+    \textbf{Conv1}\\[2pt]
+    \scriptsize 32, 8$\times$8, s4\\
+    \scriptsize ReLU};
 
-% Parameter counts below
-\node[font=\tiny, below=0.15cm of conv1] {$\approx$21k params};
-\node[font=\tiny, below=0.15cm of conv2] {$\approx$164k params};
-\node[font=\tiny, below=0.15cm of conv3] {$\approx$37k params};
-\node[font=\tiny, below=0.15cm of repr]  {$\approx$1.6M params};
-\node[font=\tiny, below=0.15cm of out]   {$\approx$2k params};
+\node[convlayer, right=of conv1] (conv2) {%
+    \textbf{Conv2}\\[2pt]
+    \scriptsize 64, 4$\times$4, s2\\
+    \scriptsize ReLU};
+
+\node[convlayer, right=of conv2] (conv3) {%
+    \textbf{Conv3}\\[2pt]
+    \scriptsize 64, 3$\times$3, s1\\
+    \scriptsize ReLU};
+
+\node[fclayer, right=of conv3] (flat) {%
+    \textbf{Flatten}\\[2pt]
+    \scriptsize 3{,}136};
+
+\node[reprlayer, right=of flat] (repr) {%
+    \textbf{fc\_repr}\\[2pt]
+    \scriptsize 512-dim\\
+    \scriptsize ReLU};
+
+\node[outlayer, right=of repr] (out) {%
+    \textbf{fc\_out}\\[2pt]
+    \scriptsize $n$ actions\\
+    \scriptsize Q-values};
+
+%% Arrows
+\foreach \from/\to in {input/conv1, conv1/conv2, conv2/conv3, conv3/flat, flat/repr, repr/out}
+    \draw[arr] (\from) -- (\to);
+
+%% Output size annotations below nodes
+\node[label] at (conv1.south) {32$\times$20$\times$20};
+\node[label] at (conv2.south) {64$\times$9$\times$9};
+\node[label] at (conv3.south) {64$\times$7$\times$7};
+
+%% Forward hook annotation above fc_repr
+\draw[dashed, tcdBlue!70, line width=0.8pt]
+    (repr.north) -- ++(0, 0.5)
+    node[above, font=\scriptsize\bfseries\color{tcdBlue}]
+        {$\hookleftarrow$ forward hook};
+
+%% Convolutional backbone brace
+\begin{scope}[on background layer]
+    \node[draw=tcdBlue!30, fill=tcdBlue!4, rounded corners=5pt,
+          fit=(conv1)(conv3), inner sep=5pt] (backbone) {};
+\end{scope}
+\node[font=\scriptsize\color{tcdBlue!70}, above=0.05cm of backbone]
+    {Convolutional backbone (shared, 1--3)};
+
 \end{tikzpicture}
-\caption{CNN architecture shared by all agents. The \texttt{fc\_repr} layer (green) is the
-focus of all representation analysis: a forward hook captures its 512-dimensional output
-after every forward pass. The \texttt{fc\_out} head is game-specific (Pong: 6 actions,
-Breakout: 4 actions). Approximately 95\% of the $\sim$1.7M total parameters reside in
-\texttt{fc\_repr}.}
+}% end resizebox
+\caption{CNN architecture shared by DQN and DDQN across all experiments. Blue nodes form
+the convolutional backbone; the green \texttt{fc\_repr} node is the 512-dimensional
+representation layer where all analysis is performed. A PyTorch forward hook captures
+activations here after every forward pass. The \texttt{fc\_out} head is game-specific
+(Pong: 6 actions; Breakout: 4 actions). Approximately 95\% of the total $\sim$1.7M
+parameters reside in \texttt{fc\_repr}. Output feature map sizes are shown below each
+convolutional layer.}
 \label{fig:architecture}
 \end{figure}
 
