@@ -18,6 +18,8 @@
 \usepackage{microtype}
 \usepackage{xcolor}
 \definecolor{tcdBlue}{RGB}{5, 105, 185}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds}
 
 %% Hyperlinks
 \usepackage[colorlinks=true,allcolors=.,urlcolor=blue]{hyperref}
@@ -127,6 +129,45 @@ Five questions guide the work:
     representations than sequential training, or does multi-task gradient mixing cause its
     own form of collapse?
 \end{enumerate}
+
+Figure~\ref{fig:overview} illustrates how the four experimental phases connect.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    phase/.style={rectangle, draw=tcdBlue, fill=tcdBlue!10, rounded corners=5pt,
+                  minimum width=3.2cm, minimum height=1.4cm, text centered,
+                  font=\small, text width=3cm},
+    finding/.style={rectangle, draw=gray!60, fill=gray!8, rounded corners=3pt,
+                    minimum width=3.2cm, minimum height=0.7cm, text centered,
+                    font=\footnotesize, text width=3cm},
+    arr/.style={-Stealth, thick, tcdBlue},
+    node distance=0.6cm and 0.7cm
+]
+\node[phase] (p1) {\textbf{Phase 1}\\Baseline 2$\times$2\\Representation Study};
+\node[phase, right=of p1] (p2) {\textbf{Phase 2}\\Cross-Game\\Transfer};
+\node[phase, right=of p2] (p3) {\textbf{Phase 3}\\Sequential\\Forgetting};
+\node[phase, right=of p3] (p4) {\textbf{Phase 4}\\Interleaved\\Training};
+
+\node[finding, below=0.3cm of p1] (f1) {CKA: conv general,\\fc\_repr specific};
+\node[finding, below=0.3cm of p2] (f2) {Similarity $\neq$\\compatibility};
+\node[finding, below=0.3cm of p3] (f3) {Forgetting via\\fc\_repr};
+\node[finding, below=0.3cm of p4] (f4) {92\% dead neurons,\\both tasks fail};
+
+\draw[arr] (p1) -- (p2);
+\draw[arr] (p2) -- (p3);
+\draw[arr] (p3) -- (p4);
+\draw[dashed, gray] (p1) -- (f1);
+\draw[dashed, gray] (p2) -- (f2);
+\draw[dashed, gray] (p3) -- (f3);
+\draw[dashed, gray] (p4) -- (f4);
+\end{tikzpicture}
+\caption{Four-phase experimental design. Each phase is motivated by the finding of the
+previous one: CKA establishes which layers are game-specific, transfer experiments test
+whether similarity implies reusability, sequential training confirms where forgetting
+propagates, and interleaved training tests whether joint training can avoid it.}
+\label{fig:overview}
+\end{figure}
 
 % ============================================================
 \section{Background}
@@ -283,7 +324,55 @@ followed by a 512-dimensional fully connected representation layer (\texttt{fc\_
 ReLU activation, and a linear output head (\texttt{fc\_out}) producing Q-values for each
 action. A PyTorch forward hook on \texttt{fc\_repr} captures the 512-dim activation after
 every forward pass without modifying computation. Weights use orthogonal
-initialisation \cite{saxe2013exact}.
+initialisation \cite{saxe2013exact}. The full architecture is illustrated in
+Figure~\ref{fig:architecture}.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    box/.style={rectangle, draw, rounded corners=3pt, minimum height=0.9cm,
+                text centered, font=\small},
+    inputbox/.style={box, fill=gray!15, minimum width=2cm},
+    convbox/.style={box, fill=tcdBlue!20, minimum width=2.6cm},
+    fcbox/.style={box, fill=orange!25, minimum width=2.6cm},
+    reprbox/.style={box, fill=green!25, minimum width=2.6cm, very thick},
+    outbox/.style={box, fill=red!20, minimum width=2.6cm},
+    arr/.style={-Stealth, thick},
+    node distance=0.45cm
+]
+\node[inputbox] (input) {Input\\(4, 84, 84)};
+\node[convbox, right=of input] (conv1) {Conv1\\32$\times$8$\times$8, s4\\ReLU};
+\node[convbox, right=of conv1] (conv2) {Conv2\\64$\times$4$\times$4, s2\\ReLU};
+\node[convbox, right=of conv2] (conv3) {Conv3\\64$\times$3$\times$3, s1\\ReLU};
+\node[fcbox, right=of conv3] (flat) {Flatten\\3,136};
+\node[reprbox, right=of flat] (repr) {\textbf{fc\_repr}\\512-dim\\ReLU};
+\node[outbox, right=of repr] (out) {fc\_out\\$n$ actions\\Q-values};
+
+\draw[arr] (input) -- (conv1);
+\draw[arr] (conv1) -- (conv2);
+\draw[arr] (conv2) -- (conv3);
+\draw[arr] (conv3) -- (flat);
+\draw[arr] (flat) -- (repr);
+\draw[arr] (repr) -- (out);
+
+% Hook annotation
+\draw[dashed, thick, tcdBlue] (repr.north) -- ++(0,0.55)
+    node[above, font=\footnotesize\color{tcdBlue}] {forward hook (all analysis here)};
+
+% Parameter counts below
+\node[font=\tiny, below=0.15cm of conv1] {$\approx$21k params};
+\node[font=\tiny, below=0.15cm of conv2] {$\approx$164k params};
+\node[font=\tiny, below=0.15cm of conv3] {$\approx$37k params};
+\node[font=\tiny, below=0.15cm of repr]  {$\approx$1.6M params};
+\node[font=\tiny, below=0.15cm of out]   {$\approx$2k params};
+\end{tikzpicture}
+\caption{CNN architecture shared by all agents. The \texttt{fc\_repr} layer (green) is the
+focus of all representation analysis: a forward hook captures its 512-dimensional output
+after every forward pass. The \texttt{fc\_out} head is game-specific (Pong: 6 actions,
+Breakout: 4 actions). Approximately 95\% of the $\sim$1.7M total parameters reside in
+\texttt{fc\_repr}.}
+\label{fig:architecture}
+\end{figure}
 
 \begin{table}[H]
 \centering
@@ -463,7 +552,27 @@ cosine distance of 0.328 versus 0.416 for DQN/Breakout, a 21\% reduction. On Pon
 cosine gap is smaller and in the opposite direction (DQN/Pong: 0.231, DDQN/Pong: 0.280),
 suggesting DDQN's tighter geometry is more consistent on the harder game. Game separation
 silhouette scores are similar across algorithms (DQN: 0.49, DDQN: 0.50), confirming that
-the game effect dominates equally for both.
+the game effect dominates equally for both. Table~\ref{tab:cluster} summarises these
+cluster statistics.
+
+\begin{table}[H]
+\centering
+\caption{Quantitative cluster statistics for fc\_repr representations (1,000 sampled
+states per agent). Mean centroid distance and mean pairwise cosine distance measure
+intra-cluster spread (lower = tighter). Game separation silhouette measures how cleanly
+Pong and Breakout clusters separate (higher = more separated; computed on PCA-50 projections).}
+\label{tab:cluster}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Agent} & \textbf{Centroid dist.} & \textbf{Intra cosine dist.} & \textbf{Game sep. silhouette} \\
+\midrule
+DQN / Pong      & 5.07 & 0.231 & 0.49 \\
+DDQN / Pong     & \textbf{4.65} & 0.280 & 0.50 \\
+DQN / Breakout  & 7.60 & 0.416 & 0.49 \\
+DDQN / Breakout & \textbf{7.42} & \textbf{0.328} & 0.50 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{figure}[H]
     \centering
@@ -606,8 +715,27 @@ representational similarity.
     \label{fig:cka}
 \end{figure}
 
-Under DDQN, cross-game CKA is 0.92 at conv1, 0.85 at conv2, 0.41 at conv3, and just 0.09
-at fc\_repr, a tenfold drop from early to late layers. The pattern holds under DQN (0.68,
+Table~\ref{tab:cka} reports the full CKA matrix. Under DDQN, cross-game CKA is 0.92 at
+conv1, 0.85 at conv2, 0.41 at conv3, and just 0.09 at fc\_repr, a tenfold drop from early
+to late layers.
+
+\begin{table}[H]
+\centering
+\caption{Layer-wise CKA similarity at four network depths. \emph{Game effect} compares
+Pong vs Breakout within the same algorithm. \emph{Algorithm effect} compares DQN vs DDQN
+on the same game. All values computed on 1,000 shared Pong probe frames.}
+\label{tab:cka}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Layer} & \textbf{Game (DQN)} & \textbf{Game (DDQN)} & \textbf{Algo (Pong)} & \textbf{Algo (Breakout)} \\
+\midrule
+conv1   & 0.67 & 0.90 & 0.998 & 0.75 \\
+conv2   & 0.73 & 0.85 & 0.96  & 0.73 \\
+conv3   & 0.40 & 0.41 & 0.87  & 0.57 \\
+fc\_repr & 0.05 & 0.09 & 0.56  & 0.46 \\
+\bottomrule
+\end{tabular}
+\end{table} The pattern holds under DQN (0.68,
 0.72, 0.40, 0.05). Algorithm-effect comparisons within the same game show much higher
 similarity at all depths: on Pong, conv1 = 0.998, conv2 = 0.96, conv3 = 0.87, fc\_repr =
 0.56, confirming that both algorithms develop functionally near-identical visual processing
@@ -656,6 +784,15 @@ distribution and produce meaningless Q-value estimates.
     \label{fig:backbone}
 \end{figure}
 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\linewidth]{figures/backbone_comparison_qvalue.png}
+    \caption{Q-value trajectories for the three backbone conditions. Full fine-tune shows
+    higher peak Q-values consistent with the Pong warm start; frozen conv Q-values remain
+    suppressed, reflecting limited representational adaptation.}
+    \label{fig:backbone_qvalue}
+\end{figure}
+
 \begin{table}[H]
 \centering
 \caption{Backbone training results on Breakout after 5M steps.}
@@ -672,8 +809,8 @@ Full fine-tune from Pong  & 3.12 & 4.47 \\
 \end{table}
 
 Frozen Pong conv underperforms scratch throughout training (Table~\ref{tab:backbone},
-Figure~\ref{fig:backbone}), despite CKA showing those layers are geometrically similar
-to what Breakout would develop independently. Pong's conv layers
+Figures~\ref{fig:backbone} and~\ref{fig:backbone_qvalue}), despite CKA showing those layers
+are geometrically similar to what Breakout would develop independently. Pong's conv layers
 encode features that are reward-predictive in Pong's visual context, such as opponent paddle
 trajectories and approaching ball angles, which differ subtly from the features most useful
 for Breakout. Freezing them constrains rather than accelerates Breakout learning. Full
@@ -817,6 +954,38 @@ Sequential freeze all   & $+$9.4  & very limited & 0.88 \\
 Interleaved (v2)        & $-$21.0 & 0.4  & \textbf{0.92} \\
 \bottomrule
 \end{tabular}
+\end{table}
+
+\subsection{Results Summary}
+
+Table~\ref{tab:master} consolidates the key quantitative outcomes across all experiments
+for a direct cross-condition comparison.
+
+\begin{table}[H]
+\centering
+\caption{Master results summary across all experimental conditions. Dead neuron fractions
+are measured at fc\_repr. Breakout performance for sequential conditions is estimated from
+the no-freeze run; freeze-all Breakout is not optimised (only the 2,052-parameter output
+head trains).}
+\label{tab:master}
+\begin{tabularx}{\linewidth}{lXXXX}
+\toprule
+\textbf{Condition} & \textbf{Pong (final)} & \textbf{Breakout (final)} & \textbf{Dead neurons} & \textbf{Key finding} \\
+\midrule
+DQN standalone       & $7.12 \pm 5.22$  & $3.86 \pm 4.94$ & baseline & Task-specific fc\_repr \\
+DDQN standalone      & $7.50 \pm 5.03$  & $4.00 \pm 5.04$ & lower    & Tighter representations \\
+\midrule
+Scratch Breakout     & --               & 3.86            & --       & Baseline for transfer \\
+Frozen conv (Pong)   & --               & 2.28            & --       & Conv too Pong-specific \\
+Full fine-tune       & --               & 3.12 (peak 4.47)& --       & Best Breakout peak \\
+\midrule
+Sequential no freeze & $-$20.8          & $\sim$3.5       & 0.87     & Immediate forgetting \\
+Sequential freeze conv & $-$14.0        & $\sim$2.5       & 0.84     & fc\_repr still forgets \\
+Sequential freeze all  & $+$9.4         & limited         & 0.88     & Forgetting prevented \\
+\midrule
+Interleaved (v2)     & $-$21.0          & 0.4             & \textbf{0.92} & Worst outcome \\
+\bottomrule
+\end{tabularx}
 \end{table}
 
 % ============================================================
