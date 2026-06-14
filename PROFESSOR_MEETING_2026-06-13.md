@@ -184,3 +184,57 @@ No experiment needed yet. Read the paper, then decide if a concrete analysis is 
 | 10 | Standardise layer terminology once clarified | Report edit | Medium | After item 7 resolved |
 | 11 | Read superposition paper (Elhage et al. 2022) | Reading | Medium | Discussion section angle |
 | 12 | Clarify "predate/predicate" | Ask professor | Low | Do not implement until clear |
+
+---
+
+## What We're Doing Now (this sprint)
+
+Two new experiments. Results are isolated to dedicated subdirectories so nothing in `results/checkpoints/`, `results/logs/`, or `results/plots/` is overwritten.
+
+### 1. Interleaved v3 — `experiments/interleaved_v3.py`
+
+**What:** Episode-level alternation with a joint replay buffer (professor's specification).  
+**How:**
+- One `JointReplayBuffer` stores transitions from both games, each tagged `game_id ∈ {0=pong, 1=breakout}`
+- Game switch happens only at episode boundaries (round-robin: switch to whichever game has fewer steps)
+- When sampling a batch for learning, Pong transitions are routed through `fc_out_pong`, Breakout transitions through `fc_out_breakout`; gradients from both games flow back through the shared backbone in a single backward pass
+- Architecture: `AtariCNNTwoHead` (shared conv1-3 + fc_repr, two separate fc_out heads)
+- 1M steps per game = 2M total
+
+**Results go to:** `results/interleaved_v3/checkpoints/` and `results/interleaved_v3/logs/`  
+**Key metric file:** `results/interleaved_v3/logs/dqn_interleaved_v3_seed42_scalemedium_metrics.csv`
+
+---
+
+### 2. Sequential Reinit — `experiments/sequential_reinit.py`
+
+**What:** Standard sequential transfer (Pong → Breakout) with dead neuron reinitialisation at the task boundary.  
+**How:**
+1. Load Pong 2M checkpoint
+2. Run 1000 forward passes on Pong frames, measure post-ReLU fc_repr activations
+3. Any neuron dead in >95% of frames gets orthogonal reinit (`nn.init.orthogonal_`, gain=√2)
+4. Copy modified backbone (conv + fc_repr) into fresh 4-action Breakout agent
+5. Recreate optimizer (clear stale Adam momentum from reinited weights)
+6. Train Breakout 2M steps
+7. Every 200k steps: chimera Pong eval, dead neuron count, CKA drift
+
+`fc_repr` in `AtariCNN` is `nn.Sequential(nn.Linear(3136, 512), nn.ReLU())` — reinit targets `model.fc_repr[0]` (the Linear at index 0).
+
+**Results go to:** `results/sequential_reinit/checkpoints/` and `results/sequential_reinit/logs/`  
+**Key metric file:** `results/sequential_reinit/logs/dqn_sequential_reinit_seed42_scalemedium_forgetting.csv`
+
+---
+
+### Pending (after next professor meeting)
+
+3. Temporal CKA at each checkpoint during training  
+4. On-policy CKA for DQN vs DDQN comparison on same game  
+5. Justify or revise cross-game CKA probe set (discuss with professor first)  
+6. Full report restructure — purpose/conduct/results per experiment section  
+7. Clarify terminology (fc_repr = representation or strategy layer?) — **must resolve before any report edits**  
+8. Page 3: add neural agent explanation paragraph  
+9. Page 16: convergence caveat or re-run to 10M steps  
+10. Standardise layer terminology once #7 is resolved  
+11. Read: Elhage et al. (2022) Toy Models of Superposition  
+12. Read: Elsayed & Mahmood (2024) + Dohare et al. (2024) continual backprop papers  
+13. Clarify "predate/predicate" with professor
