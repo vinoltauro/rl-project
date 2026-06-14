@@ -20,114 +20,167 @@
 
 ---
 
-## Point-by-Point Analysis
+## Careful Analysis (reviewed for accuracy)
 
 ### 1. Report Structure
 Each experiment section needs to be structured as:
-**Purpose → Setup/How → Results → Interpretation**
+**Purpose → Conduct/How → Results → Interpretation**
 
-Currently Results is one giant section separate from Experimental Design. The professor wants them co-located per experiment. This is a significant restructure of `main-v4.tex`.
+Currently the report separates Experimental Design (Section 3) from Results (Section 4). The professor wants them co-located per experiment — motivation, method, result, and what it means, all in one place. The Background section also needs each mechanism covered with: what it is, how it works, pros, cons — not just description.
+
+This is a significant restructure of `main-v4.tex`.
 
 ---
 
-### 2. Terminology — standardise throughout report
-- Conv1 / Conv2 / Conv3 → **"perceptual layers"** or **"feature extraction layers"**
-- fc_repr → **"representation layer"**
-- fc_out → **"policy layer"** or **"decision layer"**
+### 2. Terminology — NEEDS CLARIFICATION BEFORE IMPLEMENTING
 
-Stop using informal "lower/higher layers" language.
+**⚠️ There is a potential terminology conflict that must be resolved with the professor first.**
+
+The professor said: lower layers → "representation layers", higher layers → "strategy, policy."
+
+But throughout our entire report and codebase we call `fc_repr` the "representation layer." The professor may be using a different framing:
+- **His framing:** conv1/2/3 = "representation layers" (they build visual representations of input); fc_repr/fc_out = "strategy/policy layers" (they encode game-specific decisions)
+- **Our framing:** conv1/2/3 = feature extraction; fc_repr = "representation layer" (the 512-dim state encoding)
+
+Both usages exist in the literature. This is not a simple rename — if the professor considers fc_repr a "strategy layer," it reframes how we describe the central finding of the whole paper.
+
+**Do not rename anything until this is clarified at the next meeting.**
+
+Regardless of outcome, stop using informal "lower/higher layers" language in the report.
 
 ---
 
 ### 3. "Predate, make consistent"
-Best interpretation: **"predicate"** — each section/experiment should open with a clear statement of its *purpose* before describing the methodology. Also likely means making notation and terminology consistent throughout. **Clarify at next meeting.**
+Genuinely unclear. Possible interpretations:
+- **"Update and make consistent"** — revise the report so terminology is uniform throughout
+- **"Predicate and make consistent"** — each section should open with a clear purpose statement before the methodology
+- Could be a mishearing of "iterate" or "preface"
+
+**Ask the professor directly at the next meeting. Do not implement anything based on a guess.**
 
 ---
 
-### 4. CKA — not policy-specific (most substantive technical concern)
+### 4. CKA — the problem is deeper than initially described
 
-**Professor's concern:** Current CKA uses 1,000 frames collected with **random actions** — neutral but not representative of what agents actually attend to during play.
+**⚠️ Initial analysis was too optimistic. This is a more substantive methodological issue.**
 
-**What he wants:** Frames collected **on-policy** (using each agent's actual learned policy, ε≈0.05), so CKA reflects similarity in representations agents actually use when making decisions.
+The professor's concern has two distinct parts:
 
-**Good news:** `extract_representations.py` already collects on-policy frames (ε=0.05) and all `.npz` files exist in `results/representations/`. We just need to re-run `layer_similarity.py` using those files instead of re-collecting with random actions. Small code change, data already exists.
+**Part A — "not policy specific, random frames":**
+Current CKA uses 1,000 frames from random actions. These are states the agents never visit under their actual policies, so the similarity measure is over a distribution that doesn't reflect real agent behaviour.
+
+**Part B — "do during policy training":**
+This likely means compute CKA at **multiple checkpoints during training** — a temporal analysis of how cross-game representational similarity evolves as the policy develops. Not just post-hoc at the final checkpoint. This is a separate and additional analysis.
+
+**The harder problem with on-policy frames for cross-game CKA:**
+For cross-GAME comparison (Pong agent vs Breakout agent), there is no clean on-policy probe set. The Pong agent's policy states are Pong game states; the Breakout agent's are Breakout states — completely different distributions. If you use Pong agent's states as the shared probe, it is "on-policy" for the Pong agent but entirely off-distribution for the Breakout agent, and vice versa.
+
+The random frames approach was actually a principled choice (neutral, unbiased, avoids state distribution mismatch) — it just wasn't justified that way in the report.
+
+**What likely needs to happen:**
+- Either justify the current approach explicitly: *"Random frames provide a controlled probe set that avoids distribution mismatch between agents trained on different games"*
+- Or use each agent's own replay buffer states for CKA (policy-specific but then cross-agent comparison is no longer on equal footing)
+- AND add temporal CKA at each checkpoint — this is a new analysis regardless
+
+For cross-ALGORITHM CKA (DQN vs DDQN on same game): on-policy frames are feasible here since both agents play the same game and share state distributions. This is where "on-policy" matters most and is cleanest to implement.
+
+**The existing `.npz` files in `results/representations/` contain on-policy rollouts (ε=0.05). These can be used for the algorithm-effect CKA immediately. The game-effect CKA probe set question needs more thought.**
 
 ---
 
 ### 5. "Train same architecture — 2 training policies, compare representation layers"
 
-**We already did this** — it is the entire 2×2 baseline (DQN/Pong vs DQN/Breakout, DDQN/Pong vs DDQN/Breakout). The professor just wants the report to say this more explicitly:
+We did this — it is the 2×2 baseline. The professor's point is about framing. The report needs to state clearly that the design specifically isolates the effect of training policy and game: one architecture, two independent training regimes, two games. The architecture is held constant so any representational difference is attributable only to the game or the TD update rule.
 
-> *"Both algorithms share an identical CNN — any representational difference is purely a function of the game played or the TD update rule, not the architecture."*
+Add a sentence like: *"Both DQN and DDQN use an identical CNN backbone. Any difference in learned representations is therefore purely a function of the game played or the TD target formulation, not the network architecture."*
 
-No new experiment needed. Just a report clarification.
+No new experiment needed. Report clarification only.
 
 ---
 
-### 6. Interleaved — redesign (new experiment)
+### 6. Interleaved — redesign (new experiment, more complex than first described)
 
-**Current (v2):** Step-level alternation every 1,000 steps, 2 separate replay buffers.
+**Current (v2):** Step-level alternation every 1,000 steps, 2 separate replay buffers, each sampled independently.
 
 **Professor wants (v3):**
-- Switch game **per episode** (not per fixed step count)
-- **1 shared replay buffer** — all experiences from both games mixed together
-- At the start of each episode, select which game to play (balanced, e.g. round-robin)
-- Fixed total steps per game, rounded to episode boundary
+- Switch game **per episode** — finish the current episode before switching, not mid-episode
+- **1 joint replay buffer** — all Pong and Breakout transitions stored together
+- At start of each episode, select which game to play (balanced — maintain roughly equal episode or step counts)
+- "Fixed steps per game rounded to an episode" = the total budget per game is defined in steps but the actual switch happens at the next episode boundary
 
-The joint buffer means the agent can sample Breakout transitions while executing a Pong episode — tests whether shared experience helps or causes interference.
+**Key technical implication of the joint buffer:**
+When sampling a batch for learning, the batch will contain a mix of Pong and Breakout transitions. Each transition must be routed through the correct output head based on its `game_id`. This requires per-sample routing within the batch — not trivial. The loss is: for Pong transitions use the Pong head, for Breakout transitions use the Breakout head, sum the losses, backprop through shared backbone.
 
-**This is a new experiment to implement.**
+This is meaningfully different from v2 and is a proper new experiment to implement.
 
 ---
 
-### 7. Sequential — reinitialise dead neurons (new experiment)
+### 7. Sequential — dead neuron reinitialisation (new experiment)
 
-After training on Pong (~88% of fc_repr neurons are dead), **before starting Breakout training**: reinitialise the dead neurons to restore plasticity.
+**⚠️ This is related to continual backpropagation but is not the same thing.**
 
-This is **continual backpropagation** — read: **Elsayed & Mahmood (2024), "Maintaining Plasticity in Continual Learning via Regenerative Regularization"** (or the related "Loss of Plasticity in Deep Continual Learning" paper).
+What the professor described: after training on Pong (where ~88% of fc_repr neurons are dead), **identify the dead neurons and reinitialise their weights** before starting Breakout training. This is a one-shot intervention at the task boundary.
 
-We already track exactly which neurons are dead. The question: does reinitialising them before Breakout training reduce forgetting and/or improve Breakout performance?
+**Continual backpropagation** (Elsayed & Mahmood 2024, Dohare et al. 2024) is different — it continuously reinitialises low-utility neurons throughout training, not just at task boundaries. Read the paper for background and motivation, but the specific experiment the professor asked for is simpler:
 
-**This is a new experiment to implement.**
+1. Train Pong to completion → measure dead neurons (~88% of fc_repr)
+2. Reinitialise the weights of those dead neurons (reset to orthogonal init, same as original)
+3. Train on Breakout from this state (same as sequential no-freeze condition otherwise)
+4. Measure: does Breakout learning speed up? Does Pong forgetting change?
+5. Compare against the standard sequential no-freeze baseline
+
+Papers to read first: Elsayed & Mahmood (2024), Dohare et al. (2024) "Loss of Plasticity in Deep Continual Learning."
 
 ---
 
 ### 8. Page 3 — explain neural agent
 
-Introduction jumps into DQN without grounding what a "neural agent" is. Need a short paragraph explaining that the agent is a neural network mapping pixel inputs to Q-values, and that "neural agent" is used throughout to mean this.
+The introduction jumps into DQN without grounding what a "neural agent" is. Need a short paragraph establishing that the agent IS a neural network — pixels go in, Q-values come out, the network weights ARE the policy. This bridges the RL "agent" framing and the neural network framing for readers coming from either side.
 
 ---
 
-### 9. Page 16 — extra layer / convergence question
+### 9. Page 16 — extra layer / convergence
 
-This refers to the **backbone/frozen conv experiment** (Experiment 4 — train_backbone.py). Professor found the idea interesting that fc_repr "learned the rules of the game."
+"An extra layer which learned the game's rules" — the professor is referring to `fc_repr` specifically: the layer above the convolutions that encodes game-specific strategy. He found interesting the result that this layer, when preserved intact (freeze all condition), allows Pong performance to be retained perfectly.
 
-**Was it trained till convergence?** Probably not — 5M steps on Breakout with scratch DQN got 3.86 final reward which was still climbing. Need to either:
-- Acknowledge explicitly in the report as a limitation
-- Or run longer (10M steps) — decision needed
+**"Was this for frozen?"** — He may specifically be asking about the `fixed_sequential.py --freeze all` condition (both conv AND fc_repr frozen), which is the condition where Pong stays at ~9.4. Worth clarifying whether he means train_backbone.py (the 5M Breakout backbone experiment) or fixed_sequential.py freeze_all.
+
+**Convergence:** For the backbone experiment (train_backbone.py, 5M steps), scratch DQN on Breakout reached 3.86 which is almost certainly not convergence — Breakout typically needs 10M+ steps with a 100k buffer. This needs an explicit limitation statement in the report. Decision needed: add a caveat, or re-run to 10M steps.
 
 ---
 
-### 10. Superposition — read and assess
+### 10. Superposition — read first, then assess
 
 Read: **Elhage et al. (2022) — "Toy Models of Superposition"**
 
-The idea: networks represent more features than they have neurons by superimposing them. Connects to our dead neuron results — 88% dead neurons post-sequential means the remaining 12% may be doing enormous work via superposition. This could be a novel angle in the Discussion section connecting capacity collapse to superposition theory.
+Connection to our results: after sequential training, 88% of fc_repr neurons are dead. The remaining 12% (~62 neurons out of 512) may be encoding hundreds of features through superposition — representing more information than their count suggests. This connects the dead neuron / capacity collapse results to a theoretical framework.
 
-No experiment needed immediately. Read first, then decide if a concrete analysis is warranted.
+No experiment needed yet. Read the paper, then decide if a concrete analysis is warranted. Most likely this belongs in the Discussion section as a theoretical interpretation of the capacity collapse finding.
+
+---
+
+## Questions to Ask at Next Meeting
+
+1. **Terminology:** Do you consider `fc_repr` (the 512-dim penultimate layer) a "representation layer" or a "strategy/policy layer"? We currently call it a "representation layer" throughout the report.
+2. **"Predate, make consistent"** — what did you mean by this?
+3. **Page 16:** Were you referring to the backbone experiment (train_backbone.py) or the freeze-all sequential condition (fixed_sequential.py)? Should we re-run to 10M steps or just add a limitation caveat?
+4. **CKA frames:** For cross-game CKA, both networks must see the same inputs. On-policy states from Pong agent are off-distribution for Breakout agent. Is the justification for random frames acceptable, or do you have a preferred probe set in mind?
 
 ---
 
 ## Action Items
 
-| # | Item | Type | Priority |
-|---|---|---|---|
-| 1 | CKA with on-policy frames | Small code change — data already exists | High |
-| 2 | Interleaved v3 — joint buffer, episode-level | New experiment | High |
-| 3 | Continual backpropagation — reinit dead neurons before Breakout | New experiment | High |
-| 4 | Report restructure — purpose/conduct/results per experiment | Report rewrite | High |
-| 5 | Standardise layer terminology throughout report | Report edit | Medium |
-| 6 | Explain neural agent (page 3) | Report edit | Medium |
-| 7 | Clarify page 16 convergence — limitation or re-run | Report edit / decision | Medium |
-| 8 | Read superposition paper (Elhage et al. 2022) | Reading | Medium |
-| 9 | Clarify "predate/predicate" with professor | Clarification at next meeting | Low |
+| # | Item | Type | Priority | Notes |
+|---|---|---|---|---|
+| 1 | Temporal CKA at each checkpoint during training | New analysis | High | Separate from the probe-set question |
+| 2 | On-policy CKA for algorithm-effect comparison (DQN vs DDQN same game) | Code change | High | Feasible — same game, same state distribution |
+| 3 | Justify or revise cross-game CKA probe set | Report + possible code | High | Discuss with professor first |
+| 4 | Interleaved v3 — joint buffer, episode-level, per-sample routing | New experiment | High | More complex than v2 |
+| 5 | Dead neuron reinit before Breakout (sequential condition) | New experiment | High | Read continual backprop papers first |
+| 6 | Report restructure — purpose/conduct/results per experiment | Report rewrite | High | Major restructure |
+| 7 | Clarify terminology (fc_repr = representation or strategy layer?) | Clarification | High | Must resolve before any report edits |
+| 8 | Explain neural agent (page 3) | Report edit | Medium | Short paragraph |
+| 9 | Clarify page 16 — which experiment, convergence decision | Clarification + report | Medium | |
+| 10 | Standardise layer terminology once clarified | Report edit | Medium | After item 7 resolved |
+| 11 | Read superposition paper (Elhage et al. 2022) | Reading | Medium | Discussion section angle |
+| 12 | Clarify "predate/predicate" | Ask professor | Low | Do not implement until clear |
