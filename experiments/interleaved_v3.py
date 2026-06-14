@@ -294,16 +294,20 @@ def measure_dead_neurons(model: AtariCNNTwoHead, device: torch.device,
 def select_next_game(last_game: str, game_steps: dict,
                       target_steps: int) -> str:
     """
-    Round-robin: switch to the other game if it still has steps remaining.
-    Fall back to the current game if the other is done.
-    Returns None when both games have reached target_steps.
+    At each episode boundary, switch to whichever game has fewer steps so far.
+    This keeps both games roughly equal in step count throughout training,
+    regardless of the difference in episode length (Pong ~200 steps vs
+    Breakout ~8 steps). Returns None when both games have reached target_steps.
     """
-    other = "pong" if last_game == "breakout" else "breakout"
-    if game_steps[other] < target_steps:
-        return other
-    if game_steps[last_game] < target_steps:
-        return last_game
-    return None
+    pong_done  = game_steps["pong"]     >= target_steps
+    break_done = game_steps["breakout"] >= target_steps
+    if pong_done and break_done:
+        return None
+    if pong_done:
+        return "breakout"
+    if break_done:
+        return "pong"
+    return "pong" if game_steps["pong"] <= game_steps["breakout"] else "breakout"
 
 
 # ── Main training loop ────────────────────────────────────────────────────────
