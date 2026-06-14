@@ -41,6 +41,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.cnn import AtariCNN
 from agents.dqn import DQNAgent
 from envs.wrappers import make_atari_env
+from utils.replay_buffer import ReplayBuffer
 from utils.logger import Logger
 from utils.checkpoint import save_checkpoint
 from train import set_seeds, get_device
@@ -186,9 +187,9 @@ def chimera_pong_eval(breakout_agent: DQNAgent, pong_head_state: dict,
     # Copy backbone from current Breakout agent
     current_sd = breakout_agent.online_net.state_dict()
     chimera_sd = chimera.state_dict()
-    for key in ["conv1.weight", "conv1.bias",
-                 "conv2.weight", "conv2.bias",
-                 "conv3.weight", "conv3.bias",
+    for key in ["conv.0.weight", "conv.0.bias",
+                 "conv.2.weight", "conv.2.bias",
+                 "conv.4.weight", "conv.4.bias",
                  "fc_repr.0.weight", "fc_repr.0.bias"]:
         chimera_sd[key] = current_sd[key].clone()
     chimera.load_state_dict(chimera_sd, strict=False)
@@ -268,26 +269,26 @@ def train(total_steps: int):
 
     # ── Build Breakout agent with reinited backbone ───────────────────────────
     breakout_agent = DQNAgent(
-        n_actions          = CFG["n_breakout_actions"],
-        net_scale          = CFG["net_scale"],
-        lr                 = CFG["lr"],
-        gamma              = CFG["gamma"],
-        epsilon_start      = CFG["epsilon_start"],
-        epsilon_end        = CFG["epsilon_end"],
-        epsilon_decay_steps= CFG["epsilon_decay_steps"],
-        target_update_freq = CFG["target_update_freq"],
-        buffer_capacity    = CFG["buffer_capacity"],
-        batch_size         = CFG["batch_size"],
-        grad_clip          = CFG["grad_clip"],
-        device             = device,
+        n_actions           = CFG["n_breakout_actions"],
+        net_scale           = CFG["net_scale"],
+        lr                  = CFG["lr"],
+        gamma               = CFG["gamma"],
+        epsilon_start       = CFG["epsilon_start"],
+        epsilon_end         = CFG["epsilon_end"],
+        epsilon_decay_steps = CFG["epsilon_decay_steps"],
+        target_update_freq  = CFG["target_update_freq"],
+        grad_clip           = CFG["grad_clip"],
+        device              = device,
     )
+    buffer = ReplayBuffer(capacity=CFG["buffer_capacity"],
+                          obs_shape=(4, 84, 84), device=device)
 
     # Copy reinited backbone (conv + fc_repr) into Breakout agent
     src = pong_model.state_dict()
     dst = breakout_agent.online_net.state_dict()
-    for key in ["conv1.weight", "conv1.bias",
-                 "conv2.weight", "conv2.bias",
-                 "conv3.weight", "conv3.bias",
+    for key in ["conv.0.weight", "conv.0.bias",
+                 "conv.2.weight", "conv.2.bias",
+                 "conv.4.weight", "conv.4.bias",
                  "fc_repr.0.weight", "fc_repr.0.bias"]:
         dst[key] = src[key].clone()
     breakout_agent.online_net.load_state_dict(dst, strict=False)
@@ -311,10 +312,7 @@ def train(total_steps: int):
     mf.flush()
 
     # ── Training state ────────────────────────────────────────────────────────
-    env          = make_atari_env("ALE/Pong-v5", seed=CFG["seed"])
-    # Use Breakout env
-    env.close()
-    env          = make_atari_env("ALE/Breakout-v5", seed=CFG["seed"])
+    env = make_atari_env("ALE/Breakout-v5", seed=CFG["seed"])
     obs, _       = env.reset()
     recent_r     = []
     ep_reward    = 0.0
@@ -355,15 +353,15 @@ def train(total_steps: int):
         next_obs, reward, term, trunc, _ = env.step(action)
         done            = term or trunc
 
-        breakout_agent.replay_buffer.push(obs, action, float(reward),
-                                           next_obs, done)
-        obs              = next_obs if not done else env.reset()[0]
-        ep_reward       += reward
-        ep_len          += 1
+        buffer.push(obs, action, float(reward), next_obs, done)
+        obs       = next_obs if not done else env.reset()[0]
+        ep_reward += reward
+        ep_len    += 1
 
         if (step >= CFG["learning_starts"] and
-                len(breakout_agent.replay_buffer) >= CFG["batch_size"]):
-            loss, mean_q = breakout_agent.learn()
+                len(buffer) >= CFG["batch_size"]):
+            batch        = buffer.sample(CFG["batch_size"])
+            loss, mean_q = breakout_agent.learn(batch)
             logger.log_step(loss, mean_q)
 
         if done:
