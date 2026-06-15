@@ -26,9 +26,6 @@
 
 \begin{document}
 \maketitle
-\vspace{-1em}
-\hrule
-\vspace{1em}
 
 \noindent This report covers results from two new experiments run following our meeting
 on 13 June. Both were trained for 2\,M total environment steps on an NVIDIA L4 GPU.
@@ -39,9 +36,10 @@ and Section 4 contains the plots.
 
 One framing point worth flagging upfront. The sequential and interleaved conditions cannot
 be directly compared on the Pong column. Sequential conditions transfer from a fully-trained
-Pong agent ($+9.1$ reward) — the question there is how much gets \emph{retained}. The
-interleaved conditions start from scratch — the question is how much Pong performance gets
-\emph{developed} under joint training. This matters when reading Table~2.
+Pong agent ($+9.1$ reward) and the question is how much performance gets \emph{retained}.
+The interleaved conditions start from scratch and the question is how much Pong performance
+gets \emph{developed} under joint training constraints. This distinction matters when
+reading Table~2.
 
 \begin{table}[h]
 \centering\small
@@ -55,31 +53,31 @@ Freeze conv + fc\_repr        & $+9.1$ & $+7.2$  & 87.5\% \\
 \bottomrule
 \end{tabular}
 \caption{Sequential transfer baselines. All start from a Pong DQN trained for 2\,M steps.
-Dead neurons measured on Breakout frames at end of 2\,M Breakout steps.}
+Dead neurons are measured on Breakout frames at the end of 2\,M Breakout steps.}
 \end{table}
 
 The takeaway from the baselines is that freezing fc\_repr alone is enough to preserve Pong
 performance almost perfectly. Once fc\_repr is allowed to update, Pong collapses quickly
-even if the conv layers stay frozen.
+even when the conv layers stay frozen.
 
 \section{Experiment 1: Sequential + Dead Neuron Reinitialisation}
 
 \subsection*{Purpose}
 
-The hypothesis was straightforward: after Pong training leaves 76\% of fc\_repr neurons
+The hypothesis was straightforward. After Pong training leaves 76\% of fc\_repr neurons
 dead, reinitialising those neurons before starting Breakout might give the network more
-capacity for the new task and reduce forgetting — since Breakout would be using otherwise
-idle parameters rather than overwriting the ones Pong actually used.
+capacity for the new task and reduce forgetting. The idea was that Breakout would be using
+otherwise idle parameters rather than overwriting the ones Pong actually used.
 
 \subsection*{Conduct}
 
-After 2\,M Pong steps, we identified dead neurons in fc\_repr using the criterion:
-post-ReLU activation equal to zero in over 95\% of 1\,000 sampled Pong frames. 388 out
-of 512 neurons (75.8\%) met this threshold. All 388 were reinitialised using orthogonal
-initialisation (gain\,$=\!\sqrt{2}$, biases to zero) — the same scheme used at network
-creation. The Adam optimiser was also recreated to clear stale momentum on those weights.
-Breakout training then ran for 2\,M steps under otherwise identical conditions to the
-no-freeze baseline.
+After 2\,M Pong steps, we identified dead neurons in fc\_repr using the criterion that
+post-ReLU activation must equal zero in over 95\% of 1\,000 sampled Pong frames. 388
+out of 512 neurons (75.8\%) met this threshold. All 388 were reinitialised using
+orthogonal initialisation (gain\,$=\!\sqrt{2}$, biases to zero), which is the same
+scheme used at network creation. The Adam optimiser was also recreated to clear stale
+momentum on those weights. Breakout training then ran for 2\,M steps under otherwise
+identical conditions to the no-freeze baseline.
 
 \subsection*{Results}
 
@@ -97,8 +95,9 @@ After Pong training (pre-reinit)             & $+9.1$  & ---   & 75.8\%  & --- \
 \bottomrule
 \end{tabular}
 \caption{Sequential reinit metrics. The bold step-0 row is after reinit but before any
-Breakout training. Pong reward is the chimera evaluation: current backbone weights with
-the original frozen Pong head attached. Dead neurons measured on Breakout frames.}
+Breakout training. Pong reward is the chimera evaluation, which combines the current
+backbone weights with the original frozen Pong head. Dead neurons are measured on
+Breakout frames.}
 \end{table}
 
 \subsection*{Interpretation}
@@ -106,50 +105,52 @@ the original frozen Pong head attached. Dead neurons measured on Breakout frames
 \textbf{The forgetting happened at reinit, not during Breakout training.}
 
 \begin{insight}
-Pong reward collapses to $-20.9$ at step 0 — before a single Breakout gradient step.
+Pong reward collapses to $-20.9$ at step 0, before a single Breakout gradient step.
 The forgetting was not caused by Breakout overwriting Pong features. It was caused by
 the reinitialisation itself.
 \end{insight}
 
-The reason is a subtle co-adaptation issue. After 2\,M Pong steps, 388 fc\_repr neurons
-are dead — their post-ReLU output is consistently zero on Pong frames. The Pong output
-head (\texttt{fc\_out}) maps the full 512-dimensional representation to Q-values, but
-since 388 of those dimensions are always zero, the head has effectively learned to work
-in a 124-dimensional subspace. The weight columns corresponding to the dead neurons are
-arbitrary — they were trained with those neurons silent, so their values never mattered.
+The reason involves a subtle co-adaptation issue. After 2\,M Pong steps, 388 fc\_repr
+neurons are dead, meaning their post-ReLU output is consistently zero on Pong frames.
+The Pong output head maps the full 512-dimensional representation to Q-values, but since
+388 of those dimensions are always zero, the head has effectively learned to work in a
+124-dimensional subspace. The weight columns corresponding to the dead neurons are
+essentially arbitrary. They were trained with those neurons silent, so their values never
+mattered.
 
 After reinitialisation, those 388 neurons get new random orthogonal weights and start
 producing large non-zero activations on Pong frames. The Pong head is now receiving 388
 unexpected inputs from dimensions it had always treated as silent. The Q-value estimates
-are immediately corrupted — not by any Breakout interference, but by the reinit violating
+are immediately corrupted, not by any Breakout interference, but by the reinit violating
 the implicit agreement between the backbone and the head.
 
-This is the core insight: \textbf{dead neurons are not just wasted capacity — they are
+The core insight here is that \textbf{dead neurons are not just wasted capacity. They are
 locked-in silence that the output layer depends on.} Resetting them without also adapting
-the downstream layer is destructive regardless of what happens next. This is precisely
-why Continual Backpropagation (Dohare et al.\ 2024) works differently — it reinitialises
+the downstream layer is destructive regardless of what comes next. This is precisely why
+Continual Backpropagation (Dohare et al.\ 2024) works differently. It reinitialises
 neurons gradually throughout training so the rest of the network can adjust incrementally
-rather than absorbing a sudden structural shock.
+rather than absorbing a sudden structural shock all at once.
 
 \textbf{Dead neurons re-accumulate at the same rate regardless.}
 
 After reinit, the dead fraction dropped from 76\% to 33\% on Breakout frames. By 2\,M
-Breakout steps it had climbed back to 77.5\% — actually higher than before the reinit.
-The rate of accumulation ($\approx$22 percentage points per 1\,M steps) closely matches
-the rate seen during Pong training from scratch ($\approx$38pp per 1\,M steps). This
-confirms that dead neuron accumulation is not a Pong-specific problem or a consequence
-of transfer. It is a general property of deep RL training with ReLU activations and Adam,
-and it happens at roughly the same pace regardless of where you start.
+Breakout steps it had climbed back to 77.5\%, which is actually higher than before the
+reinit. The rate of accumulation is approximately 22 percentage points per 1\,M steps,
+which closely matches the rate seen during Pong training from scratch at approximately
+38pp per 1\,M steps. This confirms that dead neuron accumulation is not a Pong-specific
+problem or a consequence of transfer. It is a general property of deep RL training with
+ReLU activations and Adam, and it happens at roughly the same pace regardless of starting
+conditions.
 
-It is also worth noting that the dead neuron fractions here are measured on Breakout
-frames rather than Pong frames. A neuron that is alive on Pong states may be dead on
-Breakout states and vice versa — the measure is always relative to the input distribution,
-which is something to keep in mind when comparing across conditions.
+It is also worth noting that the dead neuron fractions here are measured on Breakout frames
+rather than Pong frames. A neuron that is alive on Pong states may well be dead on Breakout
+states and vice versa. The measure is always relative to the input distribution, which is
+something to bear in mind when comparing across conditions.
 
 \textbf{Breakout learning is unaffected either way.}
 
-Breakout reward reaches 3.5 at 2\,M steps, matching the no-freeze baseline exactly.
-The reinit neither accelerated nor harmed new task acquisition. Either the 124 Pong-alive
+Breakout reward reaches 3.5 at 2\,M steps, matching the no-freeze baseline exactly. The
+reinit neither accelerated nor harmed new task acquisition. Either the 124 Pong-alive
 neurons were sufficient for Breakout, or the reinited neurons simply died again before
 making a meaningful contribution.
 
@@ -160,10 +161,10 @@ See Figure~1 for the full timeline.
 \subsection*{Purpose}
 
 The previous interleaved design (v2) used step-level switching every 1\,000 steps with
-two separate replay buffers. It failed completely — Pong collapsed to $-21$ and Breakout
-stalled at 0.4, both tasks lost. This experiment implements the redesign you described:
-episode-level switching with a single joint replay buffer, to see if that resolves the
-failure.
+two separate replay buffers. It failed completely. Pong collapsed to $-21$ and Breakout
+stalled at 0.4, so both tasks were lost. This experiment implements the redesign you
+described: episode-level switching with a single joint replay buffer, to see if that
+resolves the failure.
 
 \subsection*{Conduct}
 
@@ -173,27 +174,27 @@ Two changes were made relative to v2:
   \item \textbf{Episode-level game switching.} The game only switches at natural episode
         boundaries rather than mid-episode. At each boundary, the game with fewer
         accumulated steps is selected, keeping both games balanced in step count throughout
-        training. This matters because Pong episodes average $\sim$200 steps and Breakout
-        episodes average $\sim$8 steps — strict alternation by episode would give Pong
-        96\% of the total steps.
+        training. This matters because Pong episodes average around 200 steps while
+        Breakout episodes average around 8 steps. Strict alternation by episode would
+        give Pong 96\% of the total steps, so step-based balancing was necessary.
 
   \item \textbf{Single joint replay buffer.} All transitions from both games are stored
-        in one buffer, tagged with a game ID. Every training batch contains transitions
-        from both games. Pong transitions are routed through the Pong output head and
-        Breakout transitions through the Breakout head; the losses are summed and a single
-        backward pass sends gradients from both games through the shared backbone
-        simultaneously.
+        in one buffer, each tagged with a game ID. Every training batch contains
+        transitions from both games. Pong transitions are routed through the Pong output
+        head and Breakout transitions through the Breakout head. The losses are summed
+        and a single backward pass sends gradients from both games through the shared
+        backbone simultaneously on every update.
 \end{enumerate}
 
-The architecture is a two-head network with a shared conv + fc\_repr backbone (512-dim)
-and separate per-game output heads. It was trained entirely from scratch — no Pong
-checkpoint was used. Budget: 1\,M steps per game (2\,M total), learning rate $10^{-4}$,
-100k buffer capacity, batch size 32.
+The architecture is a two-head network with a shared conv and fc\_repr backbone (512-dim)
+and separate per-game output heads. It was trained entirely from scratch with no Pong
+checkpoint used. The budget was 1\,M steps per game (2\,M total), with a learning rate
+of $10^{-4}$, 100k buffer capacity, and batch size 32.
 
-The reason v2 failed is likely the separate buffers: each training batch was 100\% from
-one game, so the backbone alternated between Pong-only and Breakout-only gradient blasts
-that largely cancelled each other. The joint buffer fixes this — every update is a
-mixed-game signal, and the backbone never has to serve a single game in isolation.
+The reason v2 likely failed is the separate buffers. Each training batch was 100\% from
+one game, so the backbone alternated between Pong-only and Breakout-only gradient updates
+that largely cancelled each other. The joint buffer fixes this because every update is a
+mixed-game signal and the backbone never has to serve a single game in isolation.
 
 \subsection*{Results}
 
@@ -203,22 +204,22 @@ mixed-game signal, and the backbone never has to serve a single game in isolatio
 \toprule
 \textbf{Total steps} & \textbf{Pong reward} & \textbf{Breakout reward} & \textbf{Dead neurons} & \textbf{CKA drift} \\
 \midrule
-0          & $0.0$   & $0.0$ & 47.1\% & 0.010 \\
-300k       & $-13.4$ & $3.5$ & 45.1\% & 0.046 \\
-\textbf{600k} & $-9.2$ & $2.9$ & \textbf{34.0\%} & 0.076 \\
-700k       & $-7.5$  & $3.2$ & 37.3\% & 0.040 \\
-1.7M       & $-4.7$  & $2.9$ & 52.5\% & 0.065 \\
+0             & $0.0$   & $0.0$ & 47.1\% & 0.010 \\
+300k          & $-13.4$ & $3.5$ & 45.1\% & 0.046 \\
+\textbf{600k} & $-9.2$  & $2.9$ & \textbf{34.0\%} & 0.076 \\
+700k          & $-7.5$  & $3.2$ & 37.3\% & 0.040 \\
+1.7M          & $-4.7$  & $2.9$ & 52.5\% & 0.065 \\
 \textbf{2M (final)} & $\mathbf{-6.8}$ & $\mathbf{3.2}$ & \textbf{62.1\%} & \textbf{0.039} \\
 \bottomrule
 \end{tabular}
 \caption{Interleaved v3 metrics at key checkpoints. Pong and Breakout rewards are online
-evaluations during joint training. Both games start from scratch — the Pong reward of
-$-6.8$ is developed through joint training, not retained from a pretrained agent.}
+evaluations during joint training. Both games start from scratch, so the Pong reward of
+$-6.8$ is developed through joint training rather than retained from a pretrained agent.}
 \end{table}
 
 \subsection*{Interpretation}
 
-\textbf{Finding 1 — The dead neuron trajectory is non-monotonic.}
+\textbf{Finding 1: The dead neuron trajectory is non-monotonic.}
 
 \begin{insight}
 Dead neuron fraction drops from 47\% to 34\% over the first 600k steps, then rises to
@@ -226,51 +227,50 @@ Dead neuron fraction drops from 47\% to 34\% over the first 600k steps, then ris
 mechanistically novel result from these experiments.
 \end{insight}
 
-At the start of training, 47\% of neurons are already dead — this is typical for a
+At the start of training, 47\% of neurons are already dead, which is typical for a
 randomly initialised ReLU network with zero biases. What is unusual is that joint training
-then \emph{reduces} the dead fraction before the usual rise sets in. The reason is that
-gradient signals from both games are reaching the backbone simultaneously on every update.
-A neuron that Pong training alone would kill — because Pong doesn't need the feature it
-responds to — may be kept alive by Breakout gradients that do need it, and vice versa.
-The two-game signal acts as a diversity pressure, preventing the backbone from collapsing
-into a single game's representational subspace.
+then reduces the dead fraction before the usual rise sets in. The reason is that gradient
+signals from both games reach the backbone simultaneously on every update. A neuron that
+Pong training alone would kill, because Pong does not need the feature it responds to,
+may be kept alive by Breakout gradients that do need it, and vice versa. The two-game
+signal acts as a diversity pressure, preventing the backbone from collapsing into a single
+game's representational subspace.
 
 After around 600k steps, both games' Q-functions are sufficiently mature that the backbone
 starts refining toward more specialised features. Neurons not needed by either game begin
-to die, and the fraction rises again. The fact that it only reaches 62\% rather than the
-87\% seen in sequential conditions suggests the joint pressure is still present — just
-weaker than in the early phase.
+to die and the fraction rises again. The fact that it only reaches 62\% rather than the
+87\% seen in sequential conditions suggests the joint pressure is still active, just weaker
+than in the early phase.
 
 The practical implication is that the plasticity benefit of joint training is strongest
-in the first half of training. Whether continuing beyond that point further erodes it is
-something worth tracking over longer runs.
+in the first half of training. Whether continuing beyond that point gradually erodes it
+further is worth tracking over longer runs.
 
-\textbf{Finding 2 — Breakout is learned much faster under joint training.}
+\textbf{Finding 2: Breakout is learned much faster under joint training.}
 
 Breakout reward reaches around 3.5 by 300--400k total steps, which corresponds to roughly
 150--200k Breakout-specific steps. The standalone Breakout DQN takes the full 2\,M
 dedicated steps to reach 3.86. This is roughly an 8$\times$ speedup in Breakout-step
 terms.
 
-The most likely explanation is shared visual structure. Both Pong and Breakout involve
-a moving ball against a structured background. The features useful for Pong — detecting
-ball position, estimating velocity, tracking relative positions — are also exactly what
-Breakout needs. Training on Pong from the first step pre-builds these features so Breakout
-can use them immediately, rather than having to learn them from scratch.
+The most likely explanation is shared visual structure. Both Pong and Breakout involve a
+moving ball against a structured background. The features useful for Pong, such as detecting
+ball position, estimating velocity, and tracking relative positions, are also exactly what
+Breakout needs. Training on Pong from the first step effectively pre-builds these features
+so Breakout can use them immediately rather than having to learn them from scratch.
 
-\textbf{Finding 3 — Pong stabilises around $-7$ and stays there.}
+\textbf{Finding 3: Pong stabilises around $-7$ and stays there.}
 
 Pong reward reaches around $-7$ to $-5$ by 700k steps and remains at that level for the
-remaining 1.3M steps of training. This is not ongoing interference or instability — it is
-a settled plateau. The two-head network has found a stable shared representation that
-serves both tasks adequately and is no longer changing in any systematic direction. The
-variance across eval points reflects the noise in 10-episode means rather than actual
-learning dynamics.
+remaining 1.3M steps of training. This is not ongoing interference or instability. It is a
+settled plateau where the two-head network has found a stable shared representation that
+serves both tasks adequately. The variance across evaluation points reflects noise in
+10-episode means rather than any real shift in the underlying policy.
 
-The plateau sitting at $-7$ rather than the standalone Pong optimum of $+7.5$ reflects
-the multitask cost: the backbone must serve both games, and the best shared representation
-is not the best Pong-only representation. The 14.5-point gap between them is the price
-of not having a dedicated Pong head.
+The plateau at $-7$ rather than the standalone Pong optimum of $+7.5$ reflects the
+multitask cost. The backbone must serve both games, and the best shared representation is
+not the best Pong-only representation. The gap of roughly 14 reward points between them
+is the price of joint training without dedicated Pong capacity.
 
 See Figures~2 and~3 for the full trajectories.
 
@@ -282,30 +282,30 @@ See Figures~2 and~3 for the full trajectories.
 \toprule
 \textbf{Condition} & \textbf{Pong final} & \textbf{Context} & \textbf{Breakout final} & \textbf{Dead (final)} \\
 \midrule
-No freeze (sequential)             & $-20.8$ & retained from $+9.1$ & $3.9$ & 87.3\% \\
-Freeze conv only (sequential)      & $-14.0$ & retained from $+9.1$ & $3.7$ & 83.6\% \\
-Freeze all (sequential)            & $+7.2$  & retained from $+9.1$ & ---   & 87.5\% \\
-Sequential + reinit (new)          & $-21.0$ & lost at reinit step  & $3.5$ & 77.5\% \\
-Interleaved v2 (step-level)        & $-21.0$ & developed from scratch & $0.4$ & 92.2\% \\
-Interleaved v3 (episode + joint)   & $-6.8$  & developed from scratch & $3.2$ & 62.1\% \\
+No freeze (sequential)           & $-20.8$ & retained from $+9.1$ & $3.9$  & 87.3\% \\
+Freeze conv only (sequential)    & $-14.0$ & retained from $+9.1$ & $3.7$  & 83.6\% \\
+Freeze all (sequential)          & $+7.2$  & retained from $+9.1$ & ---    & 87.5\% \\
+Sequential + reinit (new)        & $-21.0$ & lost at reinit step  & $3.5$  & 77.5\% \\
+Interleaved v2 (step-level)      & $-21.0$ & developed from scratch & $0.4$  & 92.2\% \\
+Interleaved v3 (episode + joint) & $-6.8$  & developed from scratch & $3.2$  & 62.1\% \\
 \midrule
-Standalone Pong DQN                & $+7.5$  & 2M dedicated steps   & ---   & --- \\
-Standalone Breakout DQN            & ---     & 2M dedicated steps   & $3.86$ & --- \\
+Standalone Pong DQN              & $+7.5$  & 2M dedicated steps   & ---    & --- \\
+Standalone Breakout DQN          & ---     & 2M dedicated steps   & $3.86$ & --- \\
 \bottomrule
 \end{tabular}
 \caption{All conditions. The Context column clarifies whether sequential Pong values
 measure retention from a pretrained agent or development from scratch under joint
-training — these are fundamentally different quantities.}
+training, as these are fundamentally different quantities.}
 \end{table}
 
-Three things stand out from this set of results. First, dead neurons are not inert —
-they are structurally co-adapted with the downstream layer, and resetting them in one
-shot causes immediate damage rather than restored capacity. Second, joint training with a
-shared buffer produces a non-monotonic plasticity curve: the backbone initially becomes
-\emph{more} plastic under joint supervision before gradually specialising. Third,
+Three things stand out from this set of results. First, dead neurons are not inert. They
+are structurally co-adapted with the downstream layer, and resetting them in one shot
+causes immediate damage rather than restoring capacity. Second, joint training with a
+shared buffer produces a non-monotonic plasticity curve where the backbone initially
+becomes more plastic under joint supervision before gradually specialising. Third,
 episode-level switching with a joint buffer (v3) succeeds at both tasks while step-level
-switching with separate buffers (v2) failed both — the joint buffer appears to be the
-critical variable.
+switching with separate buffers (v2) failed both. The joint buffer appears to be the
+critical design variable.
 
 \section{Plots}
 
@@ -313,29 +313,30 @@ critical variable.
   \centering
   \includegraphics[width=\linewidth]{results/plots/plot_reinit_analysis.png}
   \caption{\textbf{Sequential + Dead Neuron Reinitialisation.} Left: Pong reward is
-  already at floor before any Breakout training — forgetting occurs at reinit, not
-  during Breakout. Centre: dead neurons drop from 76\% to 33\% at reinit then climb
-  back to 77.5\% over 2M Breakout steps. Right: Breakout reward is identical to the
-  no-freeze baseline — reinit neither helps nor hurts new task acquisition.}
+  already at floor before any Breakout training, showing that forgetting occurs at reinit
+  rather than during Breakout. Centre: dead neurons drop from 76\% to 33\% at reinit then
+  climb back to 77.5\% over 2M Breakout steps. Right: Breakout reward is identical to
+  the no-freeze baseline, confirming that reinit neither helps nor hurts new task
+  acquisition.}
 \end{figure}
 
 \begin{figure}[h]
   \centering
   \includegraphics[width=\linewidth]{results/plots/plot_v3_analysis.png}
-  \caption{\textbf{Interleaved v3 deep dive.} Left: dead neuron fraction drops during
-  the first 600k steps (joint gradients rescue neurons) then rises during re-specialisation.
-  Centre: v3 Breakout reward vs Breakout-specific steps, reaching standalone Breakout
-  performance in $\sim$150k steps vs 2M for the dedicated DQN. Right: Pong reward
-  stabilises around $-7$ from 700k steps onwards.}
+  \caption{\textbf{Interleaved v3 deep dive.} Left: dead neuron fraction drops during the
+  first 600k steps as joint gradients rescue neurons, then rises during re-specialisation.
+  Centre: v3 Breakout reward plotted against Breakout-specific steps, reaching standalone
+  Breakout performance in around 150k steps compared to 2M for the dedicated DQN. Right:
+  Pong reward stabilises around $-7$ from 700k steps onwards.}
 \end{figure}
 
 \begin{figure}[h]
   \centering
   \includegraphics[width=\linewidth]{results/plots/plot_capacity_comparison.png}
   \caption{\textbf{Capacity loss across all conditions.} Left: all six conditions
-  together. Right: v3 non-monotonic curve annotated with the recovery phase (green) and
-  re-specialisation phase (red). v3 ends at 62\% dead — 30 percentage points below the
-  sequential no-freeze baseline and 30 below v2.}
+  together. Right: v3 non-monotonic curve annotated with the recovery phase in green and
+  the re-specialisation phase in red. v3 ends at 62\% dead, which is 30 percentage points
+  below both the sequential no-freeze baseline and v2.}
 \end{figure}
 
 \begin{figure}[h]
@@ -347,8 +348,5 @@ critical variable.
   set and should be read as indicative rather than definitive given the cross-game
   distribution mismatch.}
 \end{figure}
-
-\vspace{2em}
-\noindent\textit{Code: \url{https://github.com/vinoltauro/rl-project}}
 
 \end{document}
