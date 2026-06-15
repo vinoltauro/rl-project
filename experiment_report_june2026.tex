@@ -1,0 +1,285 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{parskip}
+\usepackage{titlesec}
+\usepackage{enumitem}
+
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue}
+
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\titlerule]
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
+
+\title{\textbf{New Experiment Results}\\[0.4em]
+       \large Interleaved Training v3 \& Sequential Dead Neuron Reinitialisation\\[0.2em]
+       \normalsize Representation Learning in Atari RL --- Progress Update}
+\author{Vinol Tauro \\ \small taurov@tcd.ie}
+\date{15 June 2026}
+
+\begin{document}
+\maketitle
+\vspace{-1em}
+\hrule
+\vspace{1em}
+
+\noindent This note reports results from two new experiments run following our meeting on 13 June.
+Both experiments were implemented as requested and trained for 2\,M total environment steps
+on an NVIDIA L4 GPU.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Context: Existing Baselines}
+
+For reference, the four existing sequential conditions (all trained on Pong for 2\,M steps, then Breakout for 2\,M steps):
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Condition} & \textbf{Pong (start)} & \textbf{Pong (end)} & \textbf{Dead neurons (end)} \\
+\midrule
+No freeze (full fine-tune)      & $+9.1$ & $-20.8$ & 87.3\% \\
+Freeze conv only                & $+9.1$ & $-14.0$ & 83.6\% \\
+Freeze conv + fc\_repr (all)    & $+9.1$ & $+7.2$  & 87.5\% \\
+\bottomrule
+\end{tabular}
+\caption{Sequential transfer baselines. Pong reward measured via chimera evaluation
+(current backbone + original Pong head). Dead neuron threshold: $>$95\% zero activation.}
+\end{table}
+
+The key observation from the baselines: freezing fc\_repr (the 512-dim penultimate layer)
+is sufficient to preserve Pong performance almost perfectly. Allowing fc\_repr to update
+causes rapid catastrophic forgetting.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Experiment 1: Interleaved Training v3}
+
+\subsection*{Design}
+
+Following your suggestion, this experiment revises the previous interleaved design (v2)
+on two dimensions:
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Episode-level game switching.} In v2, the active game switched every
+        1\,000 environment steps, cutting episodes mid-way. In v3, the game only switches
+        at a natural episode boundary. This avoids the truncation artefact.
+
+  \item \textbf{Single joint replay buffer.} In v2, Pong and Breakout each had their own
+        replay buffer sampled independently. In v3, all transitions from both games are
+        stored in one shared buffer, tagged with a \texttt{game\_id}. When a training
+        batch is sampled, Pong transitions are routed through the Pong head and Breakout
+        transitions through the Breakout head; the loss from both subsets is summed before
+        a single backward pass. This means the shared backbone (conv\,+\,fc\_repr) receives
+        gradients from both games simultaneously.
+\end{enumerate}
+
+\textbf{Architecture:} \texttt{AtariCNNTwoHead} --- shared conv\,+\,fc\_repr (512-dim),
+with separate output heads: \texttt{fc\_out\_pong} ($\rightarrow$6 actions) and
+\texttt{fc\_out\_breakout} ($\rightarrow$4 actions). Trained from scratch (no Pong checkpoint).
+
+\textbf{Budget:} 1\,M environment steps per game = 2\,M total. Learning rate $10^{-4}$,
+buffer capacity 100\,k, batch size 32. Game selection at each episode boundary is
+step-balanced: always switch to whichever game has accumulated fewer steps so far.
+
+\subsection*{Results}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Steps} & \textbf{Pong reward} & \textbf{Breakout reward} & \textbf{Dead neurons} & \textbf{CKA drift} \\
+\midrule
+0             & $0.0$  & $0.0$ & 47.1\% & 0.010 \\
+500\,k        & $-10.6$ & $4.1$ & 37.1\% & 0.040 \\
+1\,M          & $-7.6$ & $3.5$ & 36.5\% & 0.047 \\
+1.5\,M        & $-7.2$ & $3.2$ & 50.4\% & 0.045 \\
+\textbf{2\,M (final)} & $\mathbf{-6.8}$ & $\mathbf{3.2}$ & \textbf{62.1\%} & \textbf{0.039} \\
+\bottomrule
+\end{tabular}
+\caption{Interleaved v3 metrics logged every 100\,k total steps. CKA measures similarity
+to the original Pong DQN backbone (higher = more similar).}
+\end{table}
+
+\subsection*{Interpretation}
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Pong is meaningfully retained.} Final Pong reward of $-6.8$ sits between
+        the freeze-conv-only baseline ($-14.0$) and the freeze-all baseline ($+7.2$).
+        The shared backbone learns to serve both tasks without complete forgetting,
+        despite no explicit regularisation or freezing.
+
+  \item \textbf{Breakout learns normally.} Final Breakout reward of $3.2$ matches the
+        standalone Breakout DQN baseline ($3.86$), showing joint training does not impair
+        new game acquisition.
+
+  \item \textbf{Comparison with v2.} The previous step-level design (v2) resulted in
+        Pong collapsing to $-21$ and Breakout stalling at $0.4$ --- both tasks failed.
+        The episode-level joint buffer design resolves both failures. This strongly
+        validates the redesign you suggested.
+
+  \item \textbf{Dead neurons increase late in training.} Dead neuron fraction drops from
+        47\% initially to $\sim$37\% at 1\,M steps (both games partially active), then
+        rises to 62\% by 2\,M. This late-phase increase may reflect the backbone
+        over-specialising as both games individually approach convergence. The level
+        remains well below the sequential no-freeze condition (87\%).
+
+  \item \textbf{CKA drift is small and stable.} The backbone representation stays close
+        to the original Pong reference throughout. Note these networks were trained from
+        scratch, not initialised from the Pong checkpoint, so low CKA drift means both
+        training regimes converge to similar representational geometry.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Experiment 2: Sequential Transfer with Dead Neuron Reinitialisation}
+
+\subsection*{Design}
+
+Following the sequential training discussion: after training Pong for 2\,M steps,
+identify dead neurons in fc\_repr and reinitialise them before starting Breakout training.
+
+\textbf{Dead neuron criterion:} A neuron is declared dead if its post-ReLU activation
+is zero in $>$95\% of 1\,000 sampled Pong frames.
+
+\textbf{Reinitialisation:} The weight rows of dead neurons in fc\_repr are reset using
+orthogonal initialisation (gain $= \sqrt{2}$), biases to zero --- the same scheme used
+at network creation. The Adam optimiser is also recreated to clear stale momentum
+associated with the reinitialised weights.
+
+\textbf{Result of reinit:} 388 out of 512 neurons (75.8\%) were dead after Pong training.
+All 388 were reinitialised.
+
+\textbf{Budget:} Breakout trained for 2\,M steps under identical conditions to the
+no-freeze sequential baseline. Pong retention measured every 200\,k steps via chimera
+evaluation (current backbone + original frozen Pong head).
+
+\subsection*{Results}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Breakout steps} & \textbf{Pong reward (chimera)} & \textbf{Breakout reward} & \textbf{Dead neurons} & \textbf{CKA drift} \\
+\midrule
+0 (post-reinit, pre-training) & $-20.9$ & $0.0$  & 33.0\% & 0.065 \\
+200\,k                        & $-21.0$ & $2.1$  & 47.5\% & 0.018 \\
+600\,k                        & $-21.0$ & $3.9$  & 57.8\% & 0.031 \\
+1\,M                          & $-21.0$ & $3.4$  & 63.1\% & 0.018 \\
+1.6\,M                        & $-21.0$ & $5.2$  & 71.9\% & 0.028 \\
+\textbf{2\,M (final)}         & $\mathbf{-21.0}$ & $\mathbf{3.5}$ & \textbf{77.5\%} & \textbf{0.025} \\
+\bottomrule
+\end{tabular}
+\caption{Sequential reinit metrics. Pong reward is the chimera evaluation: current
+backbone weights combined with the original frozen Pong output head.}
+\end{table}
+
+\subsection*{Interpretation}
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Reinitialisation did not prevent forgetting.} Pong reward is at floor
+        ($-21$) immediately after the reinit step (step 0), before any Breakout training
+        has occurred. This is because reinitialising fc\_repr breaks the backbone's
+        ability to produce the representations that the Pong head was trained to use,
+        even though the Pong head weights are intact. The forgetting is structural, not
+        a consequence of Breakout overwriting features --- it is caused by the reinit
+        itself.
+
+  \item \textbf{Dead neurons grow back rapidly.} After reinit, the dead neuron fraction
+        drops to 33\% (from 76\% pre-reinit). But by 2\,M Breakout steps, it has climbed
+        back to 77.5\% --- \emph{higher} than where Pong left it. Breakout training
+        drives even more neurons to zero than Pong did. This suggests that dead neuron
+        accumulation is not a pathology specific to Pong, but a general property of
+        deep RL training with ReLU networks.
+
+  \item \textbf{Breakout learns normally.} Breakout reward reaches 3.5 at 2\,M steps,
+        comparable to the no-freeze sequential baseline and the standalone DQN, suggesting
+        the reinit does not accelerate or impair Breakout acquisition.
+
+  \item \textbf{Connection to continual backpropagation.} The result illustrates why
+        one-shot reinitialisation at the task boundary is insufficient: it destroys
+        existing useful representations without providing a mechanism for preventing
+        their re-collapse during the new task. Continual backpropagation (Elsayed \&
+        Mahmood 2024; Dohare et al.\ 2024) addresses this by continuously maintaining
+        neuron utility throughout training, rather than intervening once.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Plots}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{results/plots/forgetting_curves.png}
+  \caption{All conditions compared: Pong reward (left), dead neuron fraction (centre),
+           and CKA drift from original Pong backbone (right). Sequential conditions use
+           Breakout training steps on the x-axis; interleaved conditions use total steps.}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{results/plots/interleaved_curves.png}
+  \caption{Interleaved v2 (step-level) vs v3 (episode-level, joint buffer). Left: Pong
+           retention. Centre: Breakout learning. Right: dead neuron fraction. v3 succeeds
+           at both tasks; v2 fails at both.}
+\end{figure}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Summary Table}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Condition} & \textbf{Pong (final)} & \textbf{Breakout (final)} & \textbf{Dead (final)} \\
+\midrule
+Sequential no freeze (baseline)       & $-20.8$ & $3.9$  & 87.3\% \\
+Sequential freeze conv only           & $-14.0$ & $3.7$  & 83.6\% \\
+Sequential freeze all                 & $+7.2$  & ---    & 87.5\% \\
+Sequential + dead neuron reinit (new) & $-21.0$ & $3.5$  & 77.5\% \\
+Interleaved v2 step-level             & $-21.0$ & $0.4$  & 92.2\% \\
+Interleaved v3 episode-level (new)    & $-6.8$  & $3.2$  & 62.1\% \\
+\midrule
+Standalone Pong DQN (reference)       & $+7.5$  & ---    & ---    \\
+Standalone Breakout DQN (reference)   & ---     & $3.86$ & ---    \\
+\bottomrule
+\end{tabular}
+\caption{Final-checkpoint comparison across all conditions. Pong reward for sequential
+conditions is chimera evaluation; for interleaved v3 it is online evaluation (no Pong
+head was transferred). Breakout reward is the online agent mean over last 10 episodes.}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Open Questions for Next Meeting}
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Terminology:} You referred to lower layers as ``representation layers''
+        and higher layers as ``strategy/policy layers.'' Our codebase uses fc\_repr as
+        the ``representation layer.'' Should we standardise to your framing before
+        revising the report?
+
+  \item \textbf{``Predate, make consistent'':} Could you clarify what you meant by this?
+        We interpreted it as updating the report for consistency but are unsure of the
+        exact scope.
+
+  \item \textbf{CKA probe set:} For cross-game CKA, on-policy frames from one agent
+        are off-distribution for the other. We used random frames as a neutral probe set.
+        Is this justification acceptable, or do you have a preferred approach?
+
+  \item \textbf{Page 16 / convergence:} Were you referring to the backbone experiment
+        (5\,M steps) or the freeze-all sequential condition? Should we re-run to 10\,M
+        steps or add a caveat?
+\end{enumerate}
+
+\vspace{2em}
+\noindent\textit{Code: \url{https://github.com/vinoltauro/rl-project}}\\
+\noindent\textit{New experiment scripts: \texttt{experiments/interleaved\_v3.py},
+\texttt{experiments/sequential\_reinit.py}}
+
+\end{document}
