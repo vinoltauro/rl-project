@@ -12,12 +12,12 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-LOG_DIR    = "results/logs"
 OUTPUT_DIR = "results/plots"
 
-# Each run specifies its log file and which columns to read
+# Each run specifies its directory, log file, and which columns to read
 RUNS = {
     "No freeze (sequential)": {
+        "dir":       "results/logs",
         "file":      "dqn_sequential_sequential_full_seed42_scalemedium_forgetting.csv",
         "step_col":  "breakout_step",
         "pong_col":  "pong_reward",
@@ -27,6 +27,7 @@ RUNS = {
         "style":     "-",
     },
     "Freeze conv + fc_repr": {
+        "dir":       "results/logs",
         "file":      "dqn_fixed_sequential_freeze_all_seed42_scalemedium_forgetting.csv",
         "step_col":  "breakout_step",
         "pong_col":  "pong_reward",
@@ -36,6 +37,7 @@ RUNS = {
         "style":     "-",
     },
     "Freeze conv only": {
+        "dir":       "results/logs",
         "file":      "dqn_fixed_sequential_freeze_conv_fixed_seed42_scalemedium_forgetting.csv",
         "step_col":  "breakout_step",
         "pong_col":  "pong_reward",
@@ -44,14 +46,35 @@ RUNS = {
         "color":     "#2196F3",
         "style":     "--",
     },
-    "Interleaved (step-level)": {
-        "file":      "dqn_interleaved_v2_seed42_scalemedium_metrics.csv",
+    "Sequential + dead reinit": {
+        "dir":       "results/sequential_reinit/logs",
+        "file":      "dqn_sequential_reinit_seed42_scalemedium_forgetting.csv",
+        "step_col":  "breakout_step",
+        "pong_col":  "pong_reward",
+        "dead_col":  "dead_neurons",
+        "cka_col":   "cka_drift",
+        "color":     "#9C27B0",
+        "style":     "-.",
+    },
+    "Interleaved v3 (episode-level)": {
+        "dir":       "results/interleaved_v3/logs",
+        "file":      "dqn_interleaved_v3_seed42_scalemedium_metrics.csv",
         "step_col":  "total_step",
         "pong_col":  "pong_reward_mean10",
         "dead_col":  "dead_neurons",
         "cka_col":   "cka_drift_from_pong",
         "color":     "#FF9800",
         "style":     "-.",
+    },
+    "Interleaved v2 (step-level)": {
+        "dir":       "results/logs",
+        "file":      "dqn_interleaved_v2_seed42_scalemedium_metrics.csv",
+        "step_col":  "total_step",
+        "pong_col":  "pong_reward_mean10",
+        "dead_col":  "dead_neurons",
+        "cka_col":   "cka_drift_from_pong",
+        "color":     "#FF5722",
+        "style":     ":",
     },
 }
 
@@ -87,7 +110,7 @@ def main():
     ylabels = ["Mean Pong Reward", "Dead Neuron Fraction", "CKA"]
 
     for label, cfg in RUNS.items():
-        path = os.path.join(LOG_DIR, cfg["file"])
+        path = os.path.join(cfg["dir"], cfg["file"])
         if not os.path.exists(path):
             print(f"[skip] {path} not found")
             continue
@@ -128,7 +151,7 @@ def main():
     # Summary table
     print("\nSummary (step 0 → final):")
     for label, cfg in RUNS.items():
-        path = os.path.join(LOG_DIR, cfg["file"])
+        path = os.path.join(cfg["dir"], cfg["file"])
         if not os.path.exists(path):
             continue
         steps, pong_r, dead, cka = load_run(
